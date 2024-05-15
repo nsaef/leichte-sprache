@@ -20,13 +20,13 @@ def load_konvens(dirname: str) -> pd.DataFrame:
         topics = set(df.topic)
         for topic in topics:
             text = "\n".join(list(df[df.topic == topic].phrase))
-            orig_ids =  ",".join(list(df[df.topic == topic]["sent-id"].astype(str)))
+            orig_ids = ",".join(list(df[df.topic == topic]["sent-id"].astype(str)))
             data.append(
                 {
                     "id": str(uuid.uuid4()),
                     "text": text,
                     "orig_ids": orig_ids,
-                 }
+                }
             )
     data_df = pd.DataFrame(data)
     return data_df
