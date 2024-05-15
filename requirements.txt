@@ -1,0 +1,5 @@
+beautifulsoup4
+datasets
+pandas
+python-dotenv
+transformers
