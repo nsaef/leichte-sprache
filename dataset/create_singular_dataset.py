@@ -19,7 +19,9 @@ def load_konvens(dirname: str) -> pd.DataFrame:
         df = pd.read_csv(fpath)
         topics = set(df.topic)
         for topic in topics:
-            text = "\n".join(list(df[df.topic == topic].phrase))
+            text = "\n".join(list(df[df.topic == topic].phrase)).replace(
+                " \\newline ", "\n"
+            )
             orig_ids = ",".join(list(df[df.topic == topic]["sent-id"].astype(str)))
             data.append(
                 {
@@ -36,9 +38,14 @@ def main():
     # todo: docstring
     # todo: more flexible path handling
     dirname = "dataset/files"
+    datasets = []
+
     konvens_data = load_konvens(dirname)
+    datasets.append(konvens_data)
 
     # todo: combine all available datasets into one, store as HF dataset
+    df = pd.concat(datasets) if len(datasets) > 1 else datasets[0]
+    df.to_csv(f"{dirname}/dataset_singular.csv", index=False)
     return
 
 
