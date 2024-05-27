@@ -37,7 +37,7 @@ def load_konvens(dirname: str) -> pd.DataFrame:
 def main():
     # todo: docstring
     # todo: more flexible path handling
-    dirname = "dataset/files"
+    dirname = "data/datasets"
     datasets = []
 
     konvens_data = load_konvens(dirname)

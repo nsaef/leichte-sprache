@@ -55,7 +55,7 @@ def generate(dataset: datasets.Dataset, pipe: Pipeline):
         pipe.tokenizer.eos_token_id,
         pipe.tokenizer.convert_tokens_to_ids("<|eot_id|>"),
     ]
-    tmp_dataset_path = "dataset/files/dataset_singular_translated_tmp.csv"
+    tmp_dataset_path = "data/datasets/dataset_singular_translated_tmp.csv"
     if not os.path.exists(tmp_dataset_path):
         results, skip_ids = [], []
     else:
@@ -88,7 +88,7 @@ def generate(dataset: datasets.Dataset, pipe: Pipeline):
 
 def transform_singular_dataset():
     # todo: CLI
-    dataset_path = "dataset/files/dataset_singular.csv"
+    dataset_path = "data/datasets/dataset_singular.csv"
     model_id = "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
 
     pipe = load_pipeline(model_id=model_id)
@@ -96,7 +96,7 @@ def transform_singular_dataset():
     results = generate(dataset=dataset, pipe=pipe)
 
     print(results)  # todo: remove print
-    results.to_csv("dataset/files/dataset_singular_translated.csv")
+    results.to_csv("data/datasets/dataset_singular_translated.csv")
 
 
 if __name__ == "__main__":

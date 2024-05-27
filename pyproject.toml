@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leichte_sprache"
+requires-python = ">= 3.11"
+authors = [
+  {name = "Nasrin Saef", email = "saefnasrin@gmail.com"},
+]
+description = "Generate text in a simplified version of German (Leichte Sprache)"
+readme = "README.md"
+dynamic = ["version", "dependencies"]
+
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

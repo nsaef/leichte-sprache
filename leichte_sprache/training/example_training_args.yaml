@@ -1,0 +1,57 @@
+# ML Flow Config
+report_to: "mlflow"
+run_name: "leichte_sprache_disco_llama"
+
+# model params
+model_name_or_path: "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
+output_dir: "path/to/out/dir"
+# max_seq_len: 1024
+# push_to_hub: 
+# hub_private_repo: true
+# hub_strategy: "every_save"
+
+# dataset
+dataset_name: "dataset-name"
+chat_template_format: "chatml"
+add_special_tokens: False
+append_concat_token: False
+splits: "train,test"
+dataset_text_field: "chat"
+
+# general params
+seed: 100
+num_train_epochs: 1
+logging_steps: 5
+log_level: "info"
+logging_strategy: "steps"
+evaluation_strategy: "steps"
+save_strategy: "steps"
+eval_steps: 10
+save_steps: 50
+
+# training params
+packing: True
+learning_rate: 0.0001
+lr_scheduler_type: "cosine"
+weight_decay: 0.0001
+warmup_ratio: 0.0
+max_grad_norm: 1.0
+per_device_train_batch_size: 8
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 8
+gradient_checkpointing: True
+use_reentrant: True
+
+# Training Optimization
+bf16: True
+use_peft_lora: True
+use_unsloth: True
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.1
+lora_target_modules: "q_proj,k_proj,v_proj,o_proj,down_proj,up_proj,gate_proj"
+use_4bit_quantization: True
+use_nested_quant: True
+bnb_4bit_compute_dtype: "bfloat16"
+use_flash_attn: True
+
