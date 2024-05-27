@@ -1,28 +1,9 @@
-import os
-
 import datasets
-import pandas as pd
-import torch
 from transformers import (
-    pipeline,
-    Pipeline,
     PreTrainedTokenizer,
 )
-from transformers.pipelines.pt_utils import KeyDataset
-from tqdm.auto import tqdm
 
-
-def load_pipeline(model_id: str) -> Pipeline:
-    # todo: docstring
-
-    #  model_kwargs={"load_in_8bit": True}
-    pipe = pipeline(
-        "text-generation",
-        model=model_id,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-    )
-    return pipe
+from leichte_sprache.utils.model_utils import load_pipeline, generate
 
 
 def create_prompt(row, tokenizer: PreTrainedTokenizer):
@@ -47,43 +28,6 @@ def load_dataset(dataset_path: str, tokenizer: PreTrainedTokenizer) -> datasets.
     dataset = datasets.load_dataset("csv", data_files=dataset_path, split="train")
     dataset = dataset.map(create_prompt, fn_kwargs={"tokenizer": tokenizer})
     return dataset
-
-
-def generate(dataset: datasets.Dataset, pipe: Pipeline):
-    # todo: docstring, return value typing
-    terminators = [
-        pipe.tokenizer.eos_token_id,
-        pipe.tokenizer.convert_tokens_to_ids("<|eot_id|>"),
-    ]
-    tmp_dataset_path = "data/datasets/dataset_singular_translated_tmp.csv"
-    if not os.path.exists(tmp_dataset_path):
-        results, skip_ids = [], []
-    else:
-        tmp_df = pd.read_csv(tmp_dataset_path)
-        results = tmp_df.to_dict("records")
-        skip_ids = list(tmp_df.id)
-
-    for row in tqdm(dataset.to_iterable_dataset(), total=len(dataset)):
-        if row["id"] in skip_ids:
-            continue
-        out = pipe(
-            row["prompts"],
-            max_new_tokens=512,  # todo: configure max new tokens
-            eos_token_id=terminators,
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.9,
-            return_full_text=False,
-        )
-        gen_text = out[0]["generated_text"]
-        row.update({"translated": gen_text})
-        results.append(row)
-
-        if len(results) % 10 == 0:
-            # save the intermediary state
-            translation_df = pd.DataFrame(results)
-            translation_df.to_csv(tmp_dataset_path, index=False)
-    return pd.DataFrame(results)
 
 
 def transform_singular_dataset():

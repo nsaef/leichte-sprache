@@ -7,7 +7,8 @@ from datasets import Dataset, load_dataset
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 from trl import SFTTrainer
 
-from leichte_sprache.training.utils import create_and_prepare_model
+from leichte_sprache.constants import LS_SYSTEM_PROMPT_DICT, LS_USER_PROMPT_TEXT
+from leichte_sprache.utils.training_utils import create_and_prepare_model
 
 
 # Define and parse arguments.
@@ -121,13 +122,10 @@ def transform_to_chat(
     text_assistant = row[col_assistant]
     text_user = row[col_user]
     messages = [
-        {
-            "role": "system",
-            "content": "Leichte Sprache hat besondere Regeln. Sätze müssen sehr kurz und verständlich sein. Jeder Satz enthält nur eine Aussage. Es werden nur Aktivsätze verwendet. Sätze bestehen aus den Gliedern Subjekt-Verb-Objekt, z. B. Das Kind streichelt den Hund. Es wird immer das gleiche Wort für die gleiche Sache benutzt. Verneinungen werden, wenn möglich, positiv umformuliert, z. B. 'Das kostet nichts.' zu 'Das ist umsonst'. Der Konjunktiv wird vermieden. Der Genitiv wird durch Fügungen mit 'von' ersetzt, z. B. 'Das Haus des Lehrers' durch 'Das Haus vom Lehrer'. Schwierige Wörter werden erklärt. Zusammengesetzte Wörter werden getrennt, zum Beispiel wird 'Weltall' zu 'Welt-All'. Du bist Übersetzer von Standarddeutsch in Leichte Sprache.",
-        },
+        LS_SYSTEM_PROMPT_DICT,
         {
             "role": "user",
-            "content": f"Schreibe den folgenden Text nach den Regeln der Leichten Sprache. Text:\n{text_user}\nText in Leichter Sprache:",
+            "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text_user),
         },
         {"role": "assistant", "content": text_assistant},
     ]
