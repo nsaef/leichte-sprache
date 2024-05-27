@@ -1,9 +1,9 @@
+import os
+
 import datasets
 import pandas as pd
 import torch
 from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
     pipeline,
     Pipeline,
     PreTrainedTokenizer,
@@ -31,14 +31,13 @@ def create_prompt(row, tokenizer: PreTrainedTokenizer):
     messages = [
         {
             "role": "system",
-            "content": "Du bist ein Übersetzer für Leichte Sprache. Du übersetzt Leichte Sprache zu Standard-Deutsch. Standard-Deutsch benutzt längere Sätze und einen komplexeren Wortschatz als Leichte Sprache. Dafür können Sätze miteinander verbunden und neu strukturiert werden.",
+            "content": "Standard-Deutsch richtet sich an erwachsene Muttersprachler, benutzt häufig lange Sätze und einen komplexen Wortschatz mit Fremdwörtern. (Fremd-)Wörter werden nicht erklärt und meist ohne Trennzeichen geschrieben.",
         },
         {
             "role": "user",
-            "content": f"Formulier den folgenden Text um, so dass er den Regeln von Standard-Deutsch folgt:\n{text}\nText auf Standard-Deutsch:",
+            "content": f"Schreibe den folgenden Text für ein gebildetes Publikum um. Halte dich an die im Text genannten Infomationen; Erläuterungen gängiger Begriffe können wegfallen. Text:\n{text}\nText im standardsprachlichen Stil:",
         },
     ]
-    # chats = tokenizer.apply_chat_template(messages, tokenize=False)
     # todo constants for column names
     return {"prompts": messages}
 
@@ -56,34 +55,35 @@ def generate(dataset: datasets.Dataset, pipe: Pipeline):
         pipe.tokenizer.eos_token_id,
         pipe.tokenizer.convert_tokens_to_ids("<|eot_id|>"),
     ]
-    results = []
+    tmp_dataset_path = "dataset/files/dataset_singular_translated_tmp.csv"
+    if not os.path.exists(tmp_dataset_path):
+        results, skip_ids = [], []
+    else:
+        tmp_df = pd.read_csv(tmp_dataset_path)
+        results = tmp_df.to_dict("records")
+        skip_ids = list(tmp_df.id)
 
-    for prompt in tqdm(dataset["prompts"]):
+    for row in tqdm(dataset.to_iterable_dataset(), total=len(dataset)):
+        if row["id"] in skip_ids:
+            continue
         out = pipe(
-            prompt,
-            max_new_tokens=256,  # todo: configure max new tokens
+            row["prompts"],
+            max_new_tokens=512,  # todo: configure max new tokens
             eos_token_id=terminators,
             do_sample=True,
             temperature=0.6,
             top_p=0.9,
             return_full_text=False,
         )
-        results.append(out)
+        gen_text = out[0]["generated_text"]
+        row.update({"translated": gen_text})
+        results.append(row)
 
-    """    
-    for out in tqdm(pipe(
-        KeyDataset(dataset, "prompts"),
-        max_new_tokens=256, #todo: configure max new tokens
-        eos_token_id=terminators,
-        do_sample=True,
-        temperature=0.6,
-        top_p=0.9,
-        return_full_text=False,
-        )):
-        results.append(out)
-        """
-    generated_texts = [res[0]["generated_text"] for res in results]
-    return generated_texts
+        if len(results) % 10 == 0:
+            # save the intermediary state
+            translation_df = pd.DataFrame(results)
+            translation_df.to_csv(tmp_dataset_path, index=False)
+    return pd.DataFrame(results)
 
 
 def transform_singular_dataset():
@@ -95,7 +95,8 @@ def transform_singular_dataset():
     dataset = load_dataset(dataset_path=dataset_path, tokenizer=pipe.tokenizer)
     results = generate(dataset=dataset, pipe=pipe)
 
-    print(results)
+    print(results)  # todo: remove print
+    results.to_csv("dataset/files/dataset_singular_translated.csv")
 
 
 if __name__ == "__main__":
