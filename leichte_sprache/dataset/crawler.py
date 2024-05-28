@@ -1,6 +1,11 @@
 from datetime import datetime
+from time import sleep
+
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import StaleElementReferenceException
 from tqdm import tqdm
 
 from leichte_sprache.constants import CRAWLER_TABLE
@@ -96,14 +101,86 @@ def get_dlf_woerterbuch():
     return
 
 
+def dlf_news_load_all(landing_page_url):
+    # todo docstring
+    driver = webdriver.Chrome()
+    driver.get(landing_page_url)
+    btn = driver.find_element(By.CSS_SELECTOR, "span.content-loader-btn-more-text")
+    # article_count = 0
+    # diff = 1
+    i = 0
+
+    # click the "load more" button until it disappears or max 1000 times
+    while i < 1000:
+        try:
+            btn.click()
+            sleep(5)
+            all_articles = driver.find_elements(
+                By.CSS_SELECTOR, "article.b-teaser-wide"
+            )
+            # diff = len(all_articles) - article_count
+            # article_count = len(all_articles)
+            i += 1
+        except StaleElementReferenceException:
+            i = 9999
+
+    # retrieve all article URLs from the website
+    article_links = driver.find_elements(By.CSS_SELECTOR, "article a")
+    url_list = [link.get_attribute("href") for link in article_links]
+    return url_list
+
+
+def parse_dlf_article(url):
+    res = None
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, "html.parser")
+        title = soup.select("article span.headline-title")[0].text
+        teaser = soup.select("p.article-header-description")[0].text.strip()
+        date_str = soup.select("p.article-header-author")[0].text
+        release_date = datetime.strptime(date_str, "%d.%m.%Y")
+        paragraphs = soup.select("div.article-details-text")
+        article_text = "\n".join([par.text for par in paragraphs])
+        text = f"{teaser}\n{article_text}"
+        res = make_result(
+            text=text,
+            source="dlf_leicht",
+            url=url,
+            crawl_date=datetime.now(),
+            title=title,
+            orig_date=release_date,
+        )
+    return res
+
+
 def get_dlf_news():
-    categories = ["nachrichten", "kultur", "vermischtes", "sport"]
-    base_urls = []
+    categories = ["nachrichten", "kultur-index", "vermischtes", "sport"]
+    all_urls = []
+    articles = []
+
+    for category in categories:
+        cat_url = (
+            f"https://www.nachrichtenleicht.de/nachrichtenleicht-{category}-100.html"
+        )
+        print(f"Retrieving all URLs from {category}")
+        url_list = dlf_news_load_all(cat_url)
+        all_urls.extend(url_list)
+
+    for url in tqdm(all_urls):
+        res = parse_dlf_article(url)
+        articles.append(res)
+
+    insert_rows(table_name=CRAWLER_TABLE, rows=articles)
+    return
 
 
-def crawl_dlf():
-    dict_entries = get_dlf_woerterbuch()
-    # todo: crawl news articles
+def crawl_dlf(crawl_dict: bool, crawl_news: bool):
+    # todo: docstring
+    if crawl_dict:
+        get_dlf_woerterbuch()
+    if crawl_news:
+        get_dlf_news()
 
 
 def setup_db_table():
@@ -123,12 +200,13 @@ def setup_db_table():
     return
 
 
-def run_crawler():
-    initial_setup = True
+def run_crawler(initial_setup: bool, dlf_dict: bool, dlf_news: bool):
     if initial_setup:
         setup_db_table()
-    crawl_dlf()
+    crawl_dlf(crawl_dict=dlf_dict, crawl_news=dlf_news)
+    return
 
 
 if __name__ == "__main__":
-    run_crawler()
+    # todo add argparse
+    run_crawler(initial_setup=False, dlf_dict=False, dlf_news=True)
