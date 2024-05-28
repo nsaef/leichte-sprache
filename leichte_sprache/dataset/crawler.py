@@ -3,6 +3,9 @@ import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
+from leichte_sprache.constants import CRAWLER_TABLE
+from leichte_sprache.utils.db_utils import create_column_dict, create_table, insert_rows
+
 
 def make_result(
     text: str,
@@ -89,7 +92,8 @@ def get_dlf_woerterbuch():
         if response.status_code == 200:
             entry = parse_dlf_woerterbuch(response.content, url)
             entries.extend(entry)
-    return entries
+    insert_rows(table_name=CRAWLER_TABLE, rows=entries)
+    return
 
 
 def get_dlf_news():
@@ -99,9 +103,30 @@ def get_dlf_news():
 
 def crawl_dlf():
     dict_entries = get_dlf_woerterbuch()
+    # todo: crawl news articles
+
+
+def setup_db_table():
+    # todo: docstring
+    # todo: constants for column names
+    columns = [
+        create_column_dict(col_name="source", col_dtype="varchar(124)", not_null=True),
+        create_column_dict(col_name="text", col_dtype="text", not_null=True),
+        create_column_dict(col_name="url", col_dtype="text", not_null=True),
+        create_column_dict(
+            col_name="crawl_timestamp", col_dtype="datetime", not_null=True
+        ),
+        create_column_dict(col_name="title", col_dtype="varchar(256)"),
+        create_column_dict(col_name="release_date", col_dtype="datetime"),
+    ]
+    create_table(CRAWLER_TABLE, columns=columns)
+    return
 
 
 def run_crawler():
+    initial_setup = True
+    if initial_setup:
+        setup_db_table()
     crawl_dlf()
 
 

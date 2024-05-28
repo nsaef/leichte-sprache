@@ -7,6 +7,10 @@ LS_SYSTEM_PROMPT_DICT = {
 LS_USER_PROMPT_TEXT = "Schreibe den folgenden Text nach den Regeln der Leichten Sprache. Text:\n{text_user}\nText in Leichter Sprache:"
 
 
+# database
+CRAWLER_TABLE = "crawled_texts"
+
+
 # test data
 TEST_ARTICLE = """
 Dank des formellen Widerspruchs des Konsortiums Parmigiano Reggiano, das für den weltweiten Schutz der geschützten Ursprungsbezeichnung g. U. von Parmesan verantwortlich ist, wurde der sechste Versuch der Alpina-Gruppe, die Marke „Parmesano“ in Kolumbien eintragen zu lassen, nun gestoppt. (…) Die Oberinstanz bestätigte damit die erstinstanzliche Entscheidung und kam zu dem Schluss, dass der Schutz der Ursprungsbezeichnungen weit genug gefasst ist, um zu gewährleisten, dass sich das Eintragungshindernis nicht auf die wörtliche Wiedergabe des Namens beschränkt, sondern auch jede Art von Nachahmung umfasst, auch wenn sie nur angedeutet wird. (…)
