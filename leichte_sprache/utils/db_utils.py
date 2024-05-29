@@ -86,6 +86,12 @@ def create_table(name: str, columns: list[dict], dry_run: bool = False) -> None:
 
 
 def insert_rows(table_name: str, rows: list[dict], dry_run: bool = False):
+    """Insert rows into a given table. To only print the generated SQL statement, set `dry_run=True`.
+
+    :param table_name: name of the table in which to insert the data
+    :param rows: list containing one dictionary per row. The dictionary keys must match the table's column names.
+    :param dry_run: Don't run the command, just print the SQL statement. Defaults to False
+    """
     # only use rows that share the same keys
     ref_keys = rows[0].keys()
     valid_rows = [r for r in rows if r.keys() == ref_keys]

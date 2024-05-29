@@ -34,7 +34,7 @@ def load_konvens(dirname: str) -> pd.DataFrame:
     return data_df
 
 
-def main():
+def create_singular_dataset():
     # todo: docstring
     # todo: more flexible path handling
     dirname = "data/datasets"
@@ -43,6 +43,7 @@ def main():
     konvens_data = load_konvens(dirname)
     datasets.append(konvens_data)
 
+    # todo: use db -> create table, store data in DB
     # todo: combine all available datasets into one, store as HF dataset
     df = pd.concat(datasets) if len(datasets) > 1 else datasets[0]
     df.to_csv(f"{dirname}/dataset_singular.csv", index=False)
@@ -50,4 +51,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    create_singular_dataset()
