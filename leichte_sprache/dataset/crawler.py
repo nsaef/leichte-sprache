@@ -1,15 +1,23 @@
 from datetime import datetime
+from hashlib import md5
 from time import sleep
 
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 from tqdm import tqdm
 
-from leichte_sprache.constants import CRAWLER_TABLE
-from leichte_sprache.utils.db_utils import create_column_dict, create_table, insert_rows
+from leichte_sprache.constants import CRAWLER_TABLE, DATASET_SINGULAR_TABLE
+from leichte_sprache.utils.db_utils import (
+    create_column_dict,
+    create_table,
+    insert_rows,
+    get_connector,
+    ingest_pandas,
+)
 
 
 def setup_db_table():
@@ -26,6 +34,31 @@ def setup_db_table():
         create_column_dict(col_name="release_date", col_dtype="datetime"),
     ]
     create_table(CRAWLER_TABLE, columns=columns)
+    return
+
+
+def transform_to_singular_dataset():
+    # todo docstring
+    conn = get_connector()
+    df = pd.read_sql(f"SELECT * FROM {CRAWLER_TABLE}", con=conn)
+    df["full_text"] = df.apply(lambda x: f"{x.title}\n{x.text}", axis=1)
+    df["hash"] = df.apply(
+        lambda x: md5(x.full_text.encode("utf-8")).hexdigest(), axis=1
+    )
+
+    # create new df compatible with the singular dataset table
+    data_df = df[["hash", "full_text", "url"]]
+    data_df = data_df.rename(
+        columns={"hash": "id", "full_text": "text", "url": "orig_ids"}
+    )
+
+    # load singular dataset, combine with new data, drop all duplicates
+    singular_df = pd.read_sql(f"SELECT * FROM {DATASET_SINGULAR_TABLE}", con=conn)
+    complete_df = pd.concat([singular_df, data_df])
+    complete_df = complete_df.drop_duplicates(subset="id")
+
+    # drop the old table and re-add the complete data
+    ingest_pandas(complete_df, DATASET_SINGULAR_TABLE, if_exists="replace")
     return
 
 
@@ -352,9 +385,16 @@ def run_crawler(initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool):
 
 if __name__ == "__main__":
     # todo add argparse
-    run_crawler(
-        initial_setup=False,
-        dlf_dict=False,
-        dlf_news=False,
-        ndr=True,
-    )
+    crawl = False
+    transform = True
+
+    if crawl:
+        run_crawler(
+            initial_setup=False,
+            dlf_dict=False,
+            dlf_news=False,
+            ndr=True,
+        )
+
+    if transform:
+        transform_to_singular_dataset()

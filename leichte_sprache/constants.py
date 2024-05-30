@@ -9,6 +9,7 @@ LS_USER_PROMPT_TEXT = "Schreibe den folgenden Text nach den Regeln der Leichten 
 
 # database
 CRAWLER_TABLE = "crawled_texts"
+DATASET_SINGULAR_TABLE = "dataset_singular"
 
 
 # test data
