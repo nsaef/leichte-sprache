@@ -127,14 +127,15 @@ def ingest_csv(filepath: str, table_name: str):
     return
 
 
-def ingest_pandas(df: pd.DataFrame, table_name: str):
+def ingest_pandas(df: pd.DataFrame, table_name: str, if_exists: str = "append"):
     """Ingest a pandas DataFrame into the project's SQLite DB. If the table doesn't exist,
-    a new one is created. Otherwise, the contents are appended to the existing table.
-    In that case, make sure the columns match.
+    a new one is created. Otherwise, the behaviour is configured via the parameter
+    `if_exists`.
 
     :param df: pandas dataframe
     :param table_name: name of the new table
+    :param if_exists: {‘fail’, ‘replace’, ‘append’}, default ‘append’.
     """
     conn = get_connector()
-    df.to_sql(table_name, conn, if_exists="append", index=False)
+    df.to_sql(table_name, conn, if_exists=if_exists, index=False)
     return
