@@ -1,5 +1,6 @@
 import datasets
 
+from leichte_sprache.utils.db_utils import ingest_pandas, get_connector
 from leichte_sprache.utils.model_utils import load_pipeline, generate
 
 
@@ -41,19 +42,29 @@ def load_and_prepare_dataset(dataset_path: str) -> datasets.Dataset:
     return dataset
 
 
+def load_and_prepare_dataset_from_db() -> datasets.Dataset:
+    """Load dataset from a CSV file and create prompts for each row from its "text" column.
+
+    :return: HF Dataset based on the CSV file, with added "prompts" column
+    """
+
+    query = """SELECT id, text, orig_ids FROM dataset_singular 
+    WHERE id NOT IN (SELECT id FROM dataset_singular_translated);
+    """
+    conn = get_connector()
+    dataset = datasets.Dataset.from_sql(query, con=conn)
+    dataset = dataset.map(create_prompt)
+    return dataset
+
+
 def transform_singular_dataset():
     # todo: CLI
-    # todo: load from database
-    dataset_path = "data/datasets/dataset_singular.csv"
     model_id = "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
 
     pipe = load_pipeline(model_id=model_id)
-    dataset = load_and_prepare_dataset(dataset_path=dataset_path)
+    dataset = load_and_prepare_dataset_from_db()
     results = generate(dataset=dataset, pipe=pipe)
-
-    print(results)  # todo: remove print
-    # todo: save to database
-    results.to_csv("data/datasets/dataset_singular_translated.csv")
+    ingest_pandas(results, "dataset_singular_translated")
 
 
 if __name__ == "__main__":
