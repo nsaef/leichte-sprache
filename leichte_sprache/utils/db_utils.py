@@ -1,22 +1,25 @@
 import sqlite3
 
+import pandas as pd
 
-def get_connector():
+
+def get_connector() -> sqlite3.Connection:
     """
     Connect to the project's SQLite database. Overwrite the default row factory that returns
     tuples with one that returns dictionaries.
     :return: connector object
     """
     conn = sqlite3.connect("data/leichte_sprache.db")
-    conn.row_factory = dict_factory
+    # conn.row_factory = dict_factory
     return conn
 
 
-def dict_factory(cursor, row):
+def dict_factory(cursor: sqlite3.Connection, row):
     """
     By default, sqlite3 represents each row as a tuple. If a tuple does not suit your needs, you can use the sqlite3.Row class or a custom row_factory.
     While row_factory exists as an attribute both on the Cursor and the Connection, it is recommended to set Connection.row_factory, so all cursors created from the connection will use the same row factory.
     Row provides indexed and case-insensitive named access to columns, with minimal memory overhead and performance impact over a tuple. To use Row as a row factory, assign it to the row_factory attribute.
+    Note: not currently used due to pandas bug: https://github.com/pandas-dev/pandas/issues/52437
 
     :param cursor: #todo
     :param row: #todo
@@ -108,4 +111,30 @@ def insert_rows(table_name: str, rows: list[dict], dry_run: bool = False):
         print(sql)
 
     conn.close()
+    return
+
+
+def ingest_csv(filepath: str, table_name: str):
+    """Ingest a CSV file into the project's SQLite DB. If the table doesn't exist,
+    a new one is created. Otherwise, the contents are appended to the existing table.
+    In that case, make sure the columns match.
+
+    :param filepath: path to the CSV file
+    :param table_name: name of the new table
+    """
+    df = pd.read_csv(filepath)
+    ingest_pandas(df, table_name)
+    return
+
+
+def ingest_pandas(df: pd.DataFrame, table_name: str):
+    """Ingest a pandas DataFrame into the project's SQLite DB. If the table doesn't exist,
+    a new one is created. Otherwise, the contents are appended to the existing table.
+    In that case, make sure the columns match.
+
+    :param df: pandas dataframe
+    :param table_name: name of the new table
+    """
+    conn = get_connector()
+    df.to_sql(table_name, conn, if_exists="append", index=False)
     return
