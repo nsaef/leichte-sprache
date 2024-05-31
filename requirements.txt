@@ -1,13 +1,16 @@
 accelerate
+autoawq
 beautifulsoup4
 bitsandbytes
 datasets
+#flash-attn
 mlflow
 pandas
 peft
 pre-commit
 python-dotenv
 selenium
+tiktoken
 torch
 transformers
 trl

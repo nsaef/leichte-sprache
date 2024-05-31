@@ -1,6 +1,8 @@
 from datetime import datetime
 from hashlib import md5
+import locale
 from time import sleep
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
@@ -91,7 +93,7 @@ def make_result(
     # todo extend
     result = {
         "source": source,
-        "text": text.strip(),
+        "text": unicodedata.normalize("NFKD", text.strip()),
         "url": url,
         "crawl_timestamp": crawl_date,
         "title": title,
@@ -239,15 +241,16 @@ def crawl_dlf(crawl_dict: bool, crawl_news: bool):
         get_dlf_news()
 
 
-def ndr_get_links_per_page(url) -> list[str]:
+def get_links_per_page(page_url: str, selector: str, url_prefix: str = "") -> list[str]:
     """Get all links from an NDR Leichte Sprache archive page.
+    #todo: update docstring for generalized function, add parameters
 
     :param url: archive page URL
     :return: list containing all links on the page
     """
-    soup = make_soup(url)
-    link_elements = soup.select("article h2 a")
-    links = ["https://www.ndr.de" + el.get("href") for el in link_elements]
+    soup = make_soup(page_url)
+    link_elements = soup.select(selector)
+    links = [url_prefix + el.get("href") for el in link_elements]
     return links
 
 
@@ -355,7 +358,9 @@ def crawl_ndr():
 
     for page_nr in tqdm(page_nrs, desc="Collecting NDR links"):
         page_url = f"https://www.ndr.de/fernsehen/barrierefreie_angebote/leichte_sprache/leichtesprachearchiv110_page-{page_nr}.html"
-        links = ndr_get_links_per_page(page_url)
+        links = get_links_per_page(
+            page_url=page_url, selector="article h2 a", url_prefix="https://www.ndr.de"
+        )
         urls.extend(links)
 
     for url in tqdm(urls, desc="Crawling NDR articles"):
@@ -371,7 +376,102 @@ def crawl_ndr():
     return
 
 
-def run_crawler(initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool):
+def parse_mdr_article(article_url: str) -> dict:
+    """_summary_
+    #todo docstring
+    :param article_url: _description_
+    :return: _description_
+    """
+    locale.setlocale(locale.LC_ALL, "de_DE.utf8")
+    soup = make_soup(article_url)
+    title = soup.select_one("h1").text.strip()
+    release_date_el = soup.select_one("p.webtime")
+    if release_date_el:
+        # release_date_str = soup.select_one("p.webtime").text.strip()
+        release_date = datetime.strptime(
+            release_date_el.text.strip(), "%d. %B %Y, \n%H:%M Uhr"
+        )
+    else:
+        release_date = None
+    paragraphs = soup.select("div.paragraph p")
+    text = "\n".join(p.get_text("\n").strip() for p in paragraphs)
+    result = make_result(
+        text=text,
+        source="mdr",
+        url=article_url,
+        crawl_date=datetime.now(),
+        title=title,
+        orig_date=release_date,
+    )
+    return result
+
+
+def get_mdr_worterbuch():
+    base_url = "https://www.mdr.de/nachrichten-leicht/woerterbuch/index.html"
+    links = get_links_per_page(
+        page_url=base_url,
+        selector="div.multiGroupNavi a",
+        url_prefix="https://www.mdr.de",
+    )
+    article_urls = []
+    results = []
+
+    for link in tqdm(links, desc="Collecting MDR Wörterbuch links"):
+        crawled_article_urls = get_links_per_page(
+            page_url=link, selector="a.linkAll", url_prefix="https://www.mdr.de"
+        )
+        article_urls.extend(crawled_article_urls)
+
+    for article_url in tqdm(article_urls, desc="Crawling MDR Wörterbuch"):
+        if (
+            article_url
+            == "https://www.mdr.de/nachrichten-leicht/woerterbuch/glossar-leichte-sprache-100.html"
+        ):
+            continue
+        res = parse_mdr_article(article_url)
+        results.append(res)
+
+    insert_rows(table_name=CRAWLER_TABLE, rows=results)
+    return
+
+
+def get_mdr_articles():
+    """
+    # todo: docstring
+    """
+    laender = ["sachsen", "sachsen-anhalt", "thueringen"]
+    article_urls = []
+    results = []
+
+    for land in tqdm(laender, desc="Collecting links on subpages"):
+        base_url = f"https://www.mdr.de/nachrichten-leicht/rueckblick/leichte-sprache-rueckblick-buendelgruppe-{land}-100.html"
+        links_per_page = get_links_per_page(
+            page_url=base_url, selector="a.linkAll", url_prefix="https://www.mdr.de"
+        )
+        article_urls.extend(links_per_page)
+
+    for link in tqdm(links_per_page, desc="Crawling MDR articles"):
+        if "rueckblick-buendelgruppe" in link or link.endswith(
+            "nachrichten-in-leichter-sprache-114.html"
+        ):
+            continue
+        res = parse_mdr_article(link)
+        results.append(res)
+
+    insert_rows(table_name=CRAWLER_TABLE, rows=results)
+    return
+
+
+def crawl_mdr(crawl_dict: bool, crawl_news: bool):
+    if crawl_dict:
+        get_mdr_worterbuch()
+    if crawl_news:
+        get_mdr_articles()
+
+
+def run_crawler(
+    initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool, mdr: bool
+):
     # todo docstring
     if initial_setup:
         setup_db_table()
@@ -380,6 +480,9 @@ def run_crawler(initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool):
 
     if ndr:
         crawl_ndr()
+
+    if mdr:
+        crawl_mdr(crawl_dict=True, crawl_news=True)
     return
 
 
@@ -393,7 +496,8 @@ if __name__ == "__main__":
             initial_setup=False,
             dlf_dict=False,
             dlf_news=False,
-            ndr=True,
+            ndr=False,
+            mdr=True,
         )
 
     if transform:
