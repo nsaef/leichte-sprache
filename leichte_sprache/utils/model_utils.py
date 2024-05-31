@@ -20,7 +20,8 @@ def load_pipeline(model_id: str) -> Pipeline:
         "text-generation",
         model=model_id,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
+        # attn_implementation="flash_attention_2",
     )
     return pipe
 
@@ -43,7 +44,7 @@ def generate(
     for row in tqdm(dataset.to_iterable_dataset(), total=len(dataset)):
         out = pipe(
             row[prompt_col_name],
-            max_new_tokens=512,  # todo: configure max new tokens
+            max_new_tokens=1024,  # todo: configure max new tokens
             eos_token_id=terminators,
             do_sample=True,
             temperature=0.6,

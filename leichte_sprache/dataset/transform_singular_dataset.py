@@ -59,8 +59,8 @@ def load_and_prepare_dataset_from_db() -> datasets.Dataset:
 
 def transform_singular_dataset():
     # todo: CLI
-    model_id = "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
-
+    # model_id = "DiscoResearch/Llama3-DiscoLeo-Instruct-8B-v0.1"
+    model_id = "DiscoResearch/Llama3-DiscoLeo-Instruct-8B-v0.1-4bit-awq"
     pipe = load_pipeline(model_id=model_id)
     dataset = load_and_prepare_dataset_from_db()
     results = generate(dataset=dataset, pipe=pipe)
