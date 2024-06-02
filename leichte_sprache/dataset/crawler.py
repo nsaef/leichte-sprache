@@ -12,56 +12,26 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 from tqdm import tqdm
 
-from leichte_sprache.constants import CRAWLER_TABLE, DATASET_SINGULAR_TABLE
-from leichte_sprache.utils.db_utils import (
-    create_column_dict,
-    create_table,
-    insert_rows,
-    get_connector,
-    ingest_pandas,
+from leichte_sprache.constants import (
+    CRAWLER_TABLE,
+    DATASET_SINGULAR_TABLE,
+    DATASET_TRANSLATED_TABLE,
+    HF_DATASET_NAME,
+    LS_COLUMN,
+    SG_COLUMN,
+    SRC_COLUMN,
+    ID_COLUMN,
+    URL_COLUMN,
+    CRAWL_TS_COLUMN,
+    TEXT_COLUMN,
+    TITLE_COLUMN,
+    RELEASE_COLUMN,
+    FULL_TEXT_COLUMN,
+    TRANSLATED_COLUMN,
 )
-
-
-def setup_db_table():
-    # todo: docstring
-    # todo: constants for column names
-    columns = [
-        create_column_dict(col_name="source", col_dtype="varchar(124)", not_null=True),
-        create_column_dict(col_name="text", col_dtype="text", not_null=True),
-        create_column_dict(col_name="url", col_dtype="text", not_null=True),
-        create_column_dict(
-            col_name="crawl_timestamp", col_dtype="datetime", not_null=True
-        ),
-        create_column_dict(col_name="title", col_dtype="varchar(256)"),
-        create_column_dict(col_name="release_date", col_dtype="datetime"),
-    ]
-    create_table(CRAWLER_TABLE, columns=columns)
-    return
-
-
-def transform_to_singular_dataset():
-    # todo docstring
-    conn = get_connector()
-    df = pd.read_sql(f"SELECT * FROM {CRAWLER_TABLE}", con=conn)
-    df["full_text"] = df.apply(lambda x: f"{x.title}\n{x.text}", axis=1)
-    df["hash"] = df.apply(
-        lambda x: md5(x.full_text.encode("utf-8")).hexdigest(), axis=1
-    )
-
-    # create new df compatible with the singular dataset table
-    data_df = df[["hash", "full_text", "url"]]
-    data_df = data_df.rename(
-        columns={"hash": "id", "full_text": "text", "url": "orig_ids"}
-    )
-
-    # load singular dataset, combine with new data, drop all duplicates
-    singular_df = pd.read_sql(f"SELECT * FROM {DATASET_SINGULAR_TABLE}", con=conn)
-    complete_df = pd.concat([singular_df, data_df])
-    complete_df = complete_df.drop_duplicates(subset="id")
-
-    # drop the old table and re-add the complete data
-    ingest_pandas(complete_df, DATASET_SINGULAR_TABLE, if_exists="replace")
-    return
+from leichte_sprache.utils.db_utils import (
+    insert_rows,
+)
 
 
 def make_soup(url: str) -> BeautifulSoup:
@@ -91,13 +61,17 @@ def make_result(
 ) -> dict:
     # todo docstring
     # todo extend
+    text = unicodedata.normalize("NFKD", text.strip())
+    full_text = f"{title}\n{text}"
     result = {
-        "source": source,
-        "text": unicodedata.normalize("NFKD", text.strip()),
-        "url": url,
-        "crawl_timestamp": crawl_date,
-        "title": title,
-        "release_date": orig_date,
+        SRC_COLUMN: source,
+        TEXT_COLUMN: text,
+        URL_COLUMN: url,
+        CRAWL_TS_COLUMN: crawl_date,
+        TITLE_COLUMN: title,
+        RELEASE_COLUMN: orig_date,
+        FULL_TEXT_COLUMN: full_text,
+        ID_COLUMN: md5(full_text.encode("utf-8")).hexdigest(),
     }
     return result
 
@@ -469,12 +443,7 @@ def crawl_mdr(crawl_dict: bool, crawl_news: bool):
         get_mdr_articles()
 
 
-def run_crawler(
-    initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool, mdr: bool
-):
-    # todo docstring
-    if initial_setup:
-        setup_db_table()
+def run_crawler(dlf_dict: bool, dlf_news: bool, ndr: bool, mdr: bool):
 
     crawl_dlf(crawl_dict=dlf_dict, crawl_news=dlf_news)
 
@@ -488,17 +457,10 @@ def run_crawler(
 
 if __name__ == "__main__":
     # todo add argparse
-    crawl = False
-    transform = True
 
-    if crawl:
-        run_crawler(
-            initial_setup=False,
-            dlf_dict=False,
-            dlf_news=False,
-            ndr=False,
-            mdr=True,
-        )
-
-    if transform:
-        transform_to_singular_dataset()
+    run_crawler(
+        dlf_dict=False,
+        dlf_news=False,
+        ndr=False,
+        mdr=True,
+    )
