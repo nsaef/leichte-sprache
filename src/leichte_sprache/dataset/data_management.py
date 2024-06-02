@@ -28,12 +28,17 @@ from leichte_sprache.utils.db_utils import (
     get_connector,
     ingest_pandas,
 )
+from leichte_sprache.utils.utils import get_logger
+
+
+logger = get_logger()
 
 
 def setup_crawler_db_table():
     """Initial setup of an SQLite table for storing the crawled data.
     Creates the columns `source`, `text`, `url`, `crawl_timestamp`, `title`, `release_date`, `full_text` and `id`
     """
+    logger.info(f"Initializing table {CRAWLER_TABLE}")
     columns = [
         create_column_dict(
             col_name=SRC_COLUMN, col_dtype="varchar(124)", not_null=True
@@ -54,6 +59,9 @@ def setup_crawler_db_table():
 
 def transform_to_singular_dataset():
     """Write the data in the crawler table into a new table ready for enrichment."""
+    logger.info(
+        f"Transforming data from the table {CRAWLER_TABLE} into a singular dataset..."
+    )
     conn = get_connector()
     df = pd.read_sql(f"SELECT * FROM {CRAWLER_TABLE}", con=conn)
 
@@ -70,6 +78,7 @@ def transform_to_singular_dataset():
 
     # drop the old table and re-add the complete data
     ingest_pandas(complete_df, DATASET_SINGULAR_TABLE, if_exists="replace")
+    logger.info(f"Stored {len(complete_df)} rows in table {DATASET_SINGULAR_TABLE}")
     return
 
 
@@ -129,10 +138,22 @@ def filter_translated_dataset(
         lambda x: x["rouge2"] < rouge_threshold and x["lang_sg"] == Language.GERMAN.name
     )
     diff = len(dataset) - len(dataset_filtered)
-    print(
+    logger.info(
         f"Removed {diff} rows due to language mismatches or similarity ({diff/len(dataset)*100} %)"
     )
     return dataset_filtered
+
+
+def remove_bad_generations():
+    logger.info("Removing bad generations from the translated dataset...")
+
+    conn = get_connector()
+    sql = f"SELECT * FROM {DATASET_TRANSLATED_TABLE}"
+    dataset = Dataset.from_sql(sql, con=conn)
+    dataset_filtered = filter_translated_dataset(dataset)
+    ingest_pandas(dataset_filtered, DATASET_SINGULAR_TABLE, if_exists="replace")
+    logger.info("Replaced table with filtered dataset")
+    return
 
 
 def create_hf_dataset():
@@ -140,6 +161,8 @@ def create_hf_dataset():
     Create a HuggingFace dataset from the translated data and corresponding metadata.
     Filter out bad examples and push the dataset to the Hub.
     """
+    logger.info("Creating HF dataset...")
+
     # load data from table
     conn = get_connector()
     sql = f"""
@@ -159,4 +182,5 @@ def create_hf_dataset():
 
     # push to hub
     dataset.push_to_hub(HF_DATASET_NAME, token=os.getenv("HF_TOKEN"))
+    logger.info(f"Pushed dataset with {len(dataset)} lines to repo {HF_DATASET_NAME}")
     return
