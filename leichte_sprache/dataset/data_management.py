@@ -34,7 +34,6 @@ def setup_crawler_db_table():
     """Initial setup of an SQLite table for storing the crawled data.
     Creates the columns `source`, `text`, `url`, `crawl_timestamp`, `title`, `release_date`, `full_text` and `id`
     """
-    # todo: constants for column names
     columns = [
         create_column_dict(
             col_name=SRC_COLUMN, col_dtype="varchar(124)", not_null=True
@@ -75,7 +74,12 @@ def transform_to_singular_dataset():
 
 
 def calculate_rouge(predictions: list[str], references: list[str]) -> list[float]:
-    # todo: docstrings
+    """Calculate rouge2 between two lists of texts.
+
+    :param predictions: list of predicted texts
+    :param references: list of reference texts
+    :return: list of rouge2 scores
+    """
     rouge = evaluate.load("rouge")
     scores = rouge.compute(
         predictions=predictions,
@@ -86,7 +90,12 @@ def calculate_rouge(predictions: list[str], references: list[str]) -> list[float
     return scores["rouge2"]
 
 
-def recognize_language(texts: list[str]):
+def recognize_language(texts: list[str]) -> list[str]:
+    """Run automated language recognition on a list of texts, such as  `GERMAN` or `ENGLISH`.
+
+    :param texts: list of texts
+    :return: list of language names
+    """
     languages = [Language.ENGLISH, Language.GERMAN]
     detector = LanguageDetectorBuilder.from_languages(*languages).build()
     langs = detector.detect_languages_in_parallel_of(texts)
@@ -94,7 +103,20 @@ def recognize_language(texts: list[str]):
     return lang_strings
 
 
-def filter_translated_dataset(dataset: Dataset) -> Dataset:
+def filter_translated_dataset(
+    dataset: Dataset, rouge_threshold: float = 0.7
+) -> Dataset:
+    """
+    Filter the automatically translated dataset (Leichte Sprache to complicated German)
+    to remove bad examples. The following filters are run:
+    - bigram overlap (rouge2): remove examples above a certain rouge threshold,
+      to filter examples that were barely altered
+    - language recognition: remove examples that were wrongfully generated in English
+
+    :param dataset: dataset containing texts in Leichte Sprache and automatically translated standard German
+    :param rouge_threshold: maximum allowed rouge2 value
+    :return: dataset without the bad examples
+    """
     # rouge2
     rouge2_scores = calculate_rouge(dataset[LS_COLUMN], dataset[SG_COLUMN])
     dataset = dataset.add_column("rouge2", rouge2_scores)
@@ -104,7 +126,7 @@ def filter_translated_dataset(dataset: Dataset) -> Dataset:
     dataset = dataset.add_column("lang_sg", detected_langs)
 
     dataset_filtered = dataset.filter(
-        lambda x: x["rouge2"] < 0.7 and x["lang_sg"] == Language.GERMAN.name
+        lambda x: x["rouge2"] < rouge_threshold and x["lang_sg"] == Language.GERMAN.name
     )
     diff = len(dataset) - len(dataset_filtered)
     print(
@@ -114,6 +136,10 @@ def filter_translated_dataset(dataset: Dataset) -> Dataset:
 
 
 def create_hf_dataset():
+    """
+    Create a HuggingFace dataset from the translated data and corresponding metadata.
+    Filter out bad examples and push the dataset to the Hub.
+    """
     # load data from table
     conn = get_connector()
     sql = f"""
