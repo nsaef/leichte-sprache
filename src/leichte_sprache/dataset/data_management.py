@@ -108,12 +108,15 @@ def recognize_language(texts: list[str]) -> list[str]:
     languages = [Language.ENGLISH, Language.GERMAN]
     detector = LanguageDetectorBuilder.from_languages(*languages).build()
     langs = detector.detect_languages_in_parallel_of(texts)
-    lang_strings = [l.name for l in langs]
+    lang_strings = [l.name if l else None for l in langs]
     return lang_strings
 
 
 def filter_translated_dataset(
-    dataset: Dataset, rouge_threshold: float = 0.7
+    dataset: Dataset,
+    rouge_threshold: float = 0.7,
+    ls_col: str = LS_COLUMN,
+    sg_col: str = SG_COLUMN,
 ) -> Dataset:
     """
     Filter the automatically translated dataset (Leichte Sprache to complicated German)
@@ -124,14 +127,16 @@ def filter_translated_dataset(
 
     :param dataset: dataset containing texts in Leichte Sprache and automatically translated standard German
     :param rouge_threshold: maximum allowed rouge2 value
+    :param ls_col: name of the column containing the texts in Leichte Sprache. Default: `leichte_sprache`
+    :param sg_col: name of the column containing the texts in standard German. Default: `standard_german`
     :return: dataset without the bad examples
     """
     # rouge2
-    rouge2_scores = calculate_rouge(dataset[LS_COLUMN], dataset[SG_COLUMN])
+    rouge2_scores = calculate_rouge(dataset[ls_col], dataset[sg_col])
     dataset = dataset.add_column("rouge2", rouge2_scores)
 
     # lang recognition
-    detected_langs = recognize_language(dataset[SG_COLUMN])
+    detected_langs = recognize_language(dataset[sg_col])
     dataset = dataset.add_column("lang_sg", detected_langs)
 
     dataset_filtered = dataset.filter(
@@ -145,13 +150,31 @@ def filter_translated_dataset(
 
 
 def remove_bad_generations():
+    """Remove bad generations from the database to prevent training on subpar data.
+    The rows containing subpar translations are removed from the table for the
+    translated dataset (so they are retrieved again for the next translation run).
+
+     The following filters are applied:
+    - bigram overlap (rouge2): remove examples above a certain rouge threshold,
+      to filter examples that were barely altered
+    - language recognition: remove examples that were wrongfully generated in English
+    """
     logger.info("Removing bad generations from the translated dataset...")
 
     conn = get_connector()
     sql = f"SELECT * FROM {DATASET_TRANSLATED_TABLE}"
     dataset = Dataset.from_sql(sql, con=conn)
-    dataset_filtered = filter_translated_dataset(dataset)
-    ingest_pandas(dataset_filtered, DATASET_SINGULAR_TABLE, if_exists="replace")
+    dataset_filtered = filter_translated_dataset(
+        dataset, ls_col="text", sg_col="translated"
+    )
+    dataset_filtered = dataset_filtered.remove_columns(["rouge2", "lang_sg"])
+
+    # remove duplicates
+    df = dataset_filtered.to_pandas()
+    df = df.drop_duplicates(subset="id")
+    logger.info(f"Removed {len(dataset_filtered) - len(df)} duplicate rows")
+
+    ingest_pandas(df, DATASET_TRANSLATED_TABLE, if_exists="replace")
     logger.info("Replaced table with filtered dataset")
     return
 
@@ -166,9 +189,9 @@ def create_hf_dataset():
     # load data from table
     conn = get_connector()
     sql = f"""
-    SELECT t.{ID_COLUMN}, t.{TEXT_COLUMN}, t.{TRANSLATED_COLUMN}, c.{SRC_COLUMN}, c.{URL_COLUMN}, c.{RELEASE_COLUMN} 
-    FROM {DATASET_TRANSLATED_TABLE} t
-    JOIN {CRAWLER_TABLE} c ON t.{ID_COLUMN}=c.{ID_COLUMN}
+        SELECT t.{ID_COLUMN}, t.{TEXT_COLUMN}, t.{TRANSLATED_COLUMN}, c.{SRC_COLUMN}, c.{URL_COLUMN}, c.{RELEASE_COLUMN} 
+        FROM {DATASET_TRANSLATED_TABLE} t
+        JOIN {CRAWLER_TABLE} c ON t.{ID_COLUMN}=c.{ID_COLUMN}
     """
     dataset = Dataset.from_sql(sql, con=conn)
     dataset = dataset.rename_columns(
@@ -184,3 +207,16 @@ def create_hf_dataset():
     dataset.push_to_hub(HF_DATASET_NAME, token=os.getenv("HF_TOKEN"))
     logger.info(f"Pushed dataset with {len(dataset)} lines to repo {HF_DATASET_NAME}")
     return
+
+
+# todo: different subsets of the dataset for generation and classification
+# docs:
+# english_dataset.push_to_hub("<organization>/<dataset_id>", "en")
+# french_dataset.push_to_hub("<organization>/<dataset_id>", "fr")
+# # later
+# english_dataset = load_dataset("<organization>/<dataset_id>", "en")
+# french_dataset = load_dataset("<organization>/<dataset_id>", "fr")
+
+
+# if __name__ == "__main__":
+#     pass
