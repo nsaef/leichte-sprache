@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from datetime import datetime
 from hashlib import md5
 import locale
@@ -6,62 +7,30 @@ import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 from tqdm import tqdm
 
-from leichte_sprache.constants import CRAWLER_TABLE, DATASET_SINGULAR_TABLE
-from leichte_sprache.utils.db_utils import (
-    create_column_dict,
-    create_table,
-    insert_rows,
-    get_connector,
-    ingest_pandas,
+from leichte_sprache.constants import (
+    CRAWLER_TABLE,
+    SRC_COLUMN,
+    ID_COLUMN,
+    URL_COLUMN,
+    CRAWL_TS_COLUMN,
+    TEXT_COLUMN,
+    TITLE_COLUMN,
+    RELEASE_COLUMN,
+    FULL_TEXT_COLUMN,
+    DLF_DICT,
+    DLF_NEWS,
+    NDR,
+    MDR_DICT,
+    MDR_NEWS,
 )
-
-
-def setup_db_table():
-    # todo: docstring
-    # todo: constants for column names
-    columns = [
-        create_column_dict(col_name="source", col_dtype="varchar(124)", not_null=True),
-        create_column_dict(col_name="text", col_dtype="text", not_null=True),
-        create_column_dict(col_name="url", col_dtype="text", not_null=True),
-        create_column_dict(
-            col_name="crawl_timestamp", col_dtype="datetime", not_null=True
-        ),
-        create_column_dict(col_name="title", col_dtype="varchar(256)"),
-        create_column_dict(col_name="release_date", col_dtype="datetime"),
-    ]
-    create_table(CRAWLER_TABLE, columns=columns)
-    return
-
-
-def transform_to_singular_dataset():
-    # todo docstring
-    conn = get_connector()
-    df = pd.read_sql(f"SELECT * FROM {CRAWLER_TABLE}", con=conn)
-    df["full_text"] = df.apply(lambda x: f"{x.title}\n{x.text}", axis=1)
-    df["hash"] = df.apply(
-        lambda x: md5(x.full_text.encode("utf-8")).hexdigest(), axis=1
-    )
-
-    # create new df compatible with the singular dataset table
-    data_df = df[["hash", "full_text", "url"]]
-    data_df = data_df.rename(
-        columns={"hash": "id", "full_text": "text", "url": "orig_ids"}
-    )
-
-    # load singular dataset, combine with new data, drop all duplicates
-    singular_df = pd.read_sql(f"SELECT * FROM {DATASET_SINGULAR_TABLE}", con=conn)
-    complete_df = pd.concat([singular_df, data_df])
-    complete_df = complete_df.drop_duplicates(subset="id")
-
-    # drop the old table and re-add the complete data
-    ingest_pandas(complete_df, DATASET_SINGULAR_TABLE, if_exists="replace")
-    return
+from leichte_sprache.utils.db_utils import (
+    insert_rows,
+)
 
 
 def make_soup(url: str) -> BeautifulSoup:
@@ -89,21 +58,56 @@ def make_result(
     title: str = None,
     orig_date: datetime = None,
 ) -> dict:
-    # todo docstring
-    # todo extend
-    result = {
+    """Create a result dict in the correct format to insert it into the `crawled_texts` table.
+    The texts are processed by running unicode normalizazion and by stripping them.
+    An additional key-value-pair `full_text` is created by concatenating the title and the
+    text. An ID is created by hashing `full_text`.
+
+    Output dict format:
+    {
         "source": source,
-        "text": unicodedata.normalize("NFKD", text.strip()),
+        "text": text,
         "url": url,
         "crawl_timestamp": crawl_date,
         "title": title,
         "release_date": orig_date,
+        "full_text": f"{title}\n{text}",
+        "id": md5(full_text.encode("utf-8")).hexdigest(),
+    }
+
+    :param text: text of the page content (usually: in Leichte Sprache)
+    :param source: name of the source website
+    :param url: URL from which the content was crawled
+    :param crawl_date: timestamp (datetime) when the content was crawled
+    :param title: optional text title (f.i. article headline). Default: None
+    :param orig_date: optional original release date of the text. Defaults: None
+    :return: dict ready to be inserted into the `crawled_texts` table
+    """
+    text = unicodedata.normalize("NFKD", text.strip())
+    full_text = f"{title}\n{text}".strip()
+    result = {
+        SRC_COLUMN: source,
+        TEXT_COLUMN: text,
+        URL_COLUMN: url,
+        CRAWL_TS_COLUMN: crawl_date,
+        TITLE_COLUMN: title,
+        RELEASE_COLUMN: orig_date,
+        FULL_TEXT_COLUMN: full_text,
+        ID_COLUMN: md5(full_text.encode("utf-8")).hexdigest(),
     }
     return result
 
 
 def parse_dlf_woerterbuch(content: bytes, url: str) -> list[dict]:
-    # todo docstring
+    """Given the content of a request to a DLF wörterbuch page for a letter
+    containing multiple dictionary entries, extract the text, title,
+    and release date of each entry on the page. Create a dict ready to be
+    inserted into the `crawled_texts` DB  for each entry.
+
+    :param content: content of a GET request to the URL
+    :param url: URL of the page for the letter
+    :return: result dicts for all entries on the page
+    """
     results = []
     soup = BeautifulSoup(content, "html.parser")
     entries = soup.select("div.b-teaser-word")
@@ -114,7 +118,7 @@ def parse_dlf_woerterbuch(content: bytes, url: str) -> list[dict]:
         text = "\n".join(paragraphs[1:])
         res = make_result(
             text=text,
-            source="dlf_leicht",
+            source="dlf",
             url=url,
             crawl_date=datetime.now(),
             title=title,
@@ -126,6 +130,8 @@ def parse_dlf_woerterbuch(content: bytes, url: str) -> list[dict]:
 def get_dlf_woerterbuch():
     """
     Crawl the DLF dictionary page. There's a separate URL for each letter.
+    After crawling the complete dictionary, insert all data into the DB table
+    `crawled_texts`.
     """
     entries = []
     base_url = "https://www.nachrichtenleicht.de/woerterbuch"
@@ -170,29 +176,44 @@ def get_dlf_woerterbuch():
     return
 
 
-def dlf_news_load_all(landing_page_url):
-    # todo docstring
+def dlf_news_load_all(landing_page_url: str, sleep_delay: int = 5) -> list[str]:
+    """Crawl the DLF news articles in Leichte Sprache. On the landing page,
+    automatically click the "load more" button until it disappears or at most
+    1000 times. Wait a few seconds after each click to give the page time to load.
+    Once all articles are loaded, collect all links to articles.
+
+    :param landing_page_url: URL of the landing page for DLF news in Leichte Sprache
+    :param sleep_delay: number of seconds to wait after loading more articles. Default: 5.
+    :return: list of all DLF Leichte Sprache news article URLs
+    """
     driver = webdriver.Chrome()
     driver.get(landing_page_url)
     btn = driver.find_element(By.CSS_SELECTOR, "span.content-loader-btn-more-text")
     i = 0
 
-    # click the "load more" button until it disappears or max 1000 times
     while i < 1000:
         try:
             btn.click()
-            sleep(5)
+            sleep(sleep_delay)
             i += 1
         except StaleElementReferenceException:
             i = 9999
 
-    # retrieve all article URLs from the website
     article_links = driver.find_elements(By.CSS_SELECTOR, "article a")
     url_list = [link.get_attribute("href") for link in article_links]
     return url_list
 
 
-def parse_dlf_article(url):
+def parse_dlf_article(url: str) -> dict:
+    """Parse a DLF news article in Leichte Sprache. Create a BeautifulSoup
+    instance from its website, extract the article text, title, teaser and
+    release date. Concatenate the teaser and the text body to get as much
+    text as possible. Create a dictionary from this data which can be inserted
+    into the `crawled_texts` DB table and return it.
+
+    :param url: article URL
+    :return: result dictionary
+    """
     soup = make_soup(url)
     title = soup.select("article span.headline-title")[0].text
     teaser = soup.select("p.article-header-description")[0].text.strip()
@@ -213,6 +234,12 @@ def parse_dlf_article(url):
 
 
 def get_dlf_news():
+    """Crawl the news articles in Leichte Sprache in the DLF website.
+    For each of their news categories, retrieve all article URLs from
+    the landing page. After collecting all URLs, parse the actual page
+    contents and retrieve the article text, title and release dates.
+    Store the results in the DB table `crawled_texts`.
+    """
     categories = ["nachrichten", "kultur-index", "vermischtes", "sport"]
     all_urls = []
     articles = []
@@ -234,7 +261,11 @@ def get_dlf_news():
 
 
 def crawl_dlf(crawl_dict: bool, crawl_news: bool):
-    # todo: docstring
+    """Crawl the DLF content in Leichte Sprache.
+
+    :param crawl_dict: Crawl the dictionary of Leichte Sprache terms
+    :param crawl_news: Crawl the news articles
+    """
     if crawl_dict:
         get_dlf_woerterbuch()
     if crawl_news:
@@ -242,11 +273,12 @@ def crawl_dlf(crawl_dict: bool, crawl_news: bool):
 
 
 def get_links_per_page(page_url: str, selector: str, url_prefix: str = "") -> list[str]:
-    """Get all links from an NDR Leichte Sprache archive page.
-    #todo: update docstring for generalized function, add parameters
+    """Get all links from an NDR Leichte Sprache page.
 
-    :param url: archive page URL
-    :return: list containing all links on the page
+    :param url: page URL
+    :param selector: CSS selector for the link elements
+    :param url_prefix: Optional base URL (f.i. "http://www.ndr.de"). All URLs are prefixed with this. Defaults to an empty string.
+    :return: list containing all links on the page found by the given selector
     """
     soup = make_soup(page_url)
     link_elements = soup.select(selector)
@@ -287,8 +319,15 @@ def ndr_get_paragraphs(soup, article_end_str: str) -> list[str]:
     return filtered_paragraphs
 
 
-def ndr_get_article(url: str):
-    # todo: docstring
+def ndr_get_article(url: str) -> dict:
+    """Parse an NDR news article in Leichte Sprache.
+    Create a BeautifulSoup instance and extract the release date, title
+    and text of the article. Create and return a result dictionary ready
+    to be inserted into the DB table `crawled_texts`.
+
+    :param url: article URL
+    :return: dict with article data
+    """
     soup = make_soup(url)
     release_date = ndr_get_release_date(soup)
     title = soup.select_one("header h1").text.strip()
@@ -306,7 +345,17 @@ def ndr_get_article(url: str):
     return res
 
 
-def ndr_get_more_news(url: str):
+def ndr_get_more_news(url: str) -> list[dict]:
+    """
+    Parse an NDR Leichte Sprache "More news from date X" page. These pages
+    contain multiple brief articles from a certain date. Separate them
+    from each other and parse them all as distinct articles. Extract the
+    headline (not always present), text and release date of each article
+    and create a result dict per article.
+
+    :param url: page URL
+    :return: list of result dictionaries, one per article on the page
+    """
     soup = make_soup(url)
 
     # get content from website
@@ -343,15 +392,26 @@ def ndr_get_more_news(url: str):
     return results
 
 
-def parse_ndr_articles(url: str):
+def parse_ndr_articles(url: str) -> list[dict]:
+    """Parse NDR news articles in Leichte Sprache. Call the
+    appropriate parser function depending on whether it's a
+    single article or a collection of articles on a page containing
+    "more news from date X". Return the parsing result.
+
+    :param url: page URL
+    :return: list of result dictionaries
+    """
     if "Mehr-Nachrichten-vom" in url:
         return ndr_get_more_news(url)
     else:
-        return ndr_get_article(url)
+        return [ndr_get_article(url)]
 
 
 def crawl_ndr():
-    # todo docstring
+    """Crawl the NDR content in Leichte Sprache by collecting all links
+    to news articles and parsing their contents. Insert them into the DB
+    table `crawled_texts`.
+    """
     urls = []
     articles = []
     page_nrs = range(1, 101)
@@ -367,27 +427,25 @@ def crawl_ndr():
         if "Jahresrueckblick-in-Leichter-Sprache" in url:
             continue
         res = parse_ndr_articles(url)
-        if isinstance(res, list):
-            articles.extend(res)
-        else:
-            articles.append(res)
+        articles.extend(res)
 
     insert_rows(table_name=CRAWLER_TABLE, rows=articles)
     return
 
 
-def parse_mdr_article(article_url: str) -> dict:
-    """_summary_
-    #todo docstring
-    :param article_url: _description_
-    :return: _description_
+def parse_mdr_article(page_url: str) -> dict:
+    """Parse an MDR page in Leichte Sprache (news article or dictionary entry).
+    Extract the title, text and release date of the page. The locale needs to be set
+    to German, as they use German month names in the release dates.
+
+    :param page_url: URL of the MDR article or dictionary entry
+    :return: result dictionary containign the crawled data
     """
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
-    soup = make_soup(article_url)
+    soup = make_soup(page_url)
     title = soup.select_one("h1").text.strip()
     release_date_el = soup.select_one("p.webtime")
     if release_date_el:
-        # release_date_str = soup.select_one("p.webtime").text.strip()
         release_date = datetime.strptime(
             release_date_el.text.strip(), "%d. %B %Y, \n%H:%M Uhr"
         )
@@ -398,7 +456,7 @@ def parse_mdr_article(article_url: str) -> dict:
     result = make_result(
         text=text,
         source="mdr",
-        url=article_url,
+        url=page_url,
         crawl_date=datetime.now(),
         title=title,
         orig_date=release_date,
@@ -407,6 +465,10 @@ def parse_mdr_article(article_url: str) -> dict:
 
 
 def get_mdr_worterbuch():
+    """Collect all links on the MDR dictionary page, then extract and
+    parse the article contents. Create a result dict for each entry
+    and store all results in the DB table `crawled_texts`.
+    """
     base_url = "https://www.mdr.de/nachrichten-leicht/woerterbuch/index.html"
     links = get_links_per_page(
         page_url=base_url,
@@ -436,8 +498,10 @@ def get_mdr_worterbuch():
 
 
 def get_mdr_articles():
-    """
-    # todo: docstring
+    """Crawl the MDR news articles in Leichte Sprache. They are organized
+    by land - collect the links to all articles for each land, then extract
+    the article contents, create result dicts and store them in the DB table
+    `crawled_texts`.
     """
     laender = ["sachsen", "sachsen-anhalt", "thueringen"]
     article_urls = []
@@ -463,42 +527,62 @@ def get_mdr_articles():
 
 
 def crawl_mdr(crawl_dict: bool, crawl_news: bool):
+    """Crawl the MDR texts in Leichte Sprache.
+
+    :param crawl_dict: Crawl the MDR dictionary of terms in Leichte Sprache
+    :param crawl_news: Crawl the MDR news articles in Leichte Sprache
+    """
     if crawl_dict:
         get_mdr_worterbuch()
     if crawl_news:
         get_mdr_articles()
-
-
-def run_crawler(
-    initial_setup: bool, dlf_dict: bool, dlf_news: bool, ndr: bool, mdr: bool
-):
-    # todo docstring
-    if initial_setup:
-        setup_db_table()
-
-    crawl_dlf(crawl_dict=dlf_dict, crawl_news=dlf_news)
-
-    if ndr:
-        crawl_ndr()
-
-    if mdr:
-        crawl_mdr(crawl_dict=True, crawl_news=True)
     return
 
 
+def run_crawler(
+    dlf_dict: bool, dlf_news: bool, ndr: bool, mdr_dict: bool, mdr_news: bool
+):
+    """Crawl content in Leichte Sprache.
+
+    :param dlf_dict: Crawl the DLF dictionary
+    :param dlf_news: Crawl the DLF news
+    :param ndr: Crawl the NDR news
+    :param mdr_dict: Crawl the MDR dictionary
+    :param mdr_news: Crawl the MDR news
+    """
+    crawl_dlf(crawl_dict=dlf_dict, crawl_news=dlf_news)
+    crawl_mdr(crawl_dict=mdr_dict, crawl_news=mdr_news)
+    if ndr:
+        crawl_ndr()
+    return
+
+
+def parse_args() -> ArgumentParser:
+    """Parse the command line arguments to select the sources to crawl.
+
+    :return: ArgumentParser with command line arguments.
+    """
+    parser = ArgumentParser(
+        prog="Leichte Sprache Crawler", description="Crawl content in Leichte Sprache"
+    )
+    parser.add_argument(
+        "--sources",
+        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS],
+        nargs="*",
+        help="Select the sources to crawl. If this argument is not used, all sources will be crawled.",
+    )
+    # parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == "__main__":
-    # todo add argparse
-    crawl = False
-    transform = True
+    args = parse_args()
 
-    if crawl:
-        run_crawler(
-            initial_setup=False,
-            dlf_dict=False,
-            dlf_news=False,
-            ndr=False,
-            mdr=True,
-        )
-
-    if transform:
-        transform_to_singular_dataset()
+    run_crawler(
+        dlf_dict=True if not args.sources or DLF_DICT in args.sources else False,
+        dlf_news=True if not args.sources or DLF_NEWS in args.sources else False,
+        ndr=True if not args.sources or NDR in args.sources else False,
+        mdr_dict=True if not args.sources or MDR_DICT in args.sources else False,
+        mdr_news=True if not args.sources or MDR_NEWS in args.sources else False,
+    )
