@@ -3,7 +3,7 @@ report_to: "mlflow"
 run_name: "leichte_sprache_disco_llama"
 
 # model params
-model_name_or_path: "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
+model_name_or_path: "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1"
 output_dir: "path/to/out/dir"
 # max_seq_len: 1024
 # push_to_hub: 
@@ -25,7 +25,7 @@ log_level: "info"
 logging_strategy: "steps"
 evaluation_strategy: "steps"
 save_strategy: "steps"
-eval_steps: 10
+eval_steps: 50
 save_steps: 50
 
 # training params

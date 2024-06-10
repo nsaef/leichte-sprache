@@ -1,5 +1,5 @@
 # set up environment
-conda create -y -n leichte_sprache python=3.9
+conda create -y -n leichte_sprache python=3.12
 conda activate leichte_sprache
 pip install -e .
 
@@ -8,3 +8,6 @@ pre-commit install
 
 # install German lcoale (needed for crawling)
 sudo locale-gen de_DE.utf8
+
+# set up data dir
+mkdir -p data

@@ -10,7 +10,6 @@ from leichte_sprache.constants import (
     CRAWLER_TABLE,
     DATASET_SINGULAR_TABLE,
     DATASET_TRANSLATED_TABLE,
-    HF_DATASET_NAME,
     LS_COLUMN,
     SG_COLUMN,
     SRC_COLUMN,
@@ -211,8 +210,10 @@ def create_hf_dataset():
     filtered_df = filtered_df.shuffle()
 
     # push to hub
-    dataset.push_to_hub(HF_DATASET_NAME, token=os.getenv("HF_TOKEN"))
-    logger.info(f"Pushed dataset with {len(dataset)} lines to repo {HF_DATASET_NAME}")
+    dataset.push_to_hub(os.getenv("HF_DATASET_NAME"), token=os.getenv("HF_TOKEN"))
+    logger.info(
+        f"Pushed dataset with {len(dataset)} lines to repo {os.getenv("HF_DATASET_NAME")}"
+    )
     return
 
 
@@ -264,6 +265,12 @@ def create_singular_dataset():
 
     # store the relevant part of the crawled texts in the singular dataset table
     transform_to_singular_dataset()
+    return
+
+
+def crawl_all_sources():
+    """Crawl all available data sources and store them in the DB table `crawled_texts`."""
+    run_crawler(dlf_dict=True, dlf_news=True, ndr=True, mdr_dict=True, mdr_news=True)
     return
 
 

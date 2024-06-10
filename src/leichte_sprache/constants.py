@@ -27,9 +27,6 @@ MDR_DICT = "mdr_dict"
 MDR_NEWS = "mdr_news"
 ALL_SOURCES = "all_sources"
 
-### huggingface ###
-HF_DATASET_NAME = "nsaef/German_leichte_sprache"
-
 
 ### prompts ###
 LS_SYSTEM_PROMPT_DICT = {
