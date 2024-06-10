@@ -16,7 +16,6 @@ chat_template_format: "chatml"
 add_special_tokens: False
 append_concat_token: False
 splits: "train,test"
-dataset_text_field: "chat"
 
 # general params
 seed: 100

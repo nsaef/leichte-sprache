@@ -16,6 +16,7 @@ RELEASE_COLUMN = "release_date"
 FULL_TEXT_COLUMN = "full_text"
 ID_COLUMN = "id"
 TRANSLATED_COLUMN = "translated"
+CHAT_COLUMN = "chat"
 
 
 ### Crawler arguments ###

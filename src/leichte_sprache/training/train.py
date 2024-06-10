@@ -3,11 +3,22 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-from datasets import Dataset, load_dataset
-from transformers import HfArgumentParser, TrainingArguments, set_seed
+from datasets import load_dataset, Dataset
+from transformers import (
+    HfArgumentParser,
+    PreTrainedTokenizer,
+    TrainingArguments,
+    set_seed,
+)
 from trl import SFTTrainer
 
-from leichte_sprache.constants import LS_SYSTEM_PROMPT_DICT, LS_USER_PROMPT_TEXT
+from leichte_sprache.constants import (
+    LS_SYSTEM_PROMPT_DICT,
+    LS_USER_PROMPT_TEXT,
+    LS_COLUMN,
+    SG_COLUMN,
+    CHAT_COLUMN,
+)
 from leichte_sprache.utils.training_utils import create_and_prepare_model
 
 
@@ -114,14 +125,18 @@ class DataTrainingArguments:
 
 def transform_to_chat(
     row,
-    tokenizer,
-    col_user: str = "standard_german",
-    col_assistant: str = "leichte_sprache",
-):
-    # todo docstring
-    # todo: change default to final column names
-    # todo: move prompts to constants
+    tokenizer: PreTrainedTokenizer,
+    col_user: str = SG_COLUMN,
+    col_assistant: str = LS_COLUMN,
+) -> dict:
+    """Takes a row of a dataset as input and uses its data to create chat messages.
 
+    :param row: dataset row
+    :param tokenizer: tokenizer with the desired chat template
+    :param col_user: column containing the texts for the role "user", defaults to "standard_german"
+    :param col_assistant: column containing the texts for the role "assistant", defaults to "leichte_sprache"
+    :return: dictionary -> {"chat": [{"role": "user", "content": "foo"},{"role": "assistant", "content": "bar"}]}
+    """
     text_assistant = row[col_assistant]
     text_user = row[col_user]
     messages = [
@@ -136,11 +151,17 @@ def transform_to_chat(
         messages, tokenize=False, add_generation_prompt=False
     )
 
-    # todo constants for column names
-    return {"chat": chat}
+    return {CHAT_COLUMN: chat}
 
 
-def prepare_data(dataset_path, tokenizer):
+def prepare_data(dataset_path: str, tokenizer: PreTrainedTokenizer) -> Dataset:
+    """Load the given dataset (from the disk or the HF hub) and transform
+    it into a chat. Add the chat data in a new column.
+
+    :param dataset_path: name or path of the dataset
+    :param tokenizer: tokenizer containing the desired chat template
+    :return: dataset with added column for chat
+    """
     dataset = load_dataset(dataset_path, split="train")
     dataset = dataset.map(transform_to_chat, fn_kwargs={"tokenizer": tokenizer})
     return dataset
@@ -183,7 +204,7 @@ def run_peft_training(model_args, data_args, training_args):
             "append_concat_token": data_args.append_concat_token,
             "add_special_tokens": data_args.add_special_tokens,
         },
-        dataset_text_field=data_args.dataset_text_field,
+        dataset_text_field=CHAT_COLUMN,
         max_seq_length=data_args.max_seq_length,
     )
     trainer.accelerator.print(f"{trainer.model}")
@@ -221,5 +242,4 @@ if __name__ == "__main__":
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    # todo MLFLow setup
     run_peft_training(model_args, data_args, training_args)
