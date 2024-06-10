@@ -9,20 +9,32 @@ from leichte_sprache.constants import (
 )
 
 
-def load_model(base_modelname, peft_modelname):
+def load_peft_model(base_modelname: str, peft_modelname: str, merged_path: str = None):
+    """Load a model trained with parameter-efficient finetuning.
+
+    :param base_modelname: name or path of the full/base model
+    :param peft_modelname: name or path of the adapter
+    :param merged_path: Optional path to store the merged model, defaults to None
+    :return: merged model, tokenizer
+    """
     tokenizer = AutoTokenizer.from_pretrained(peft_modelname)
     base_model = AutoModelForCausalLM.from_pretrained(
         base_modelname,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
         device_map={"": 0},
-        # use_flash_attention_2=True, #todo: upgrade cuda to 11.6 to use flash attention 2
     )
-    base_model.resize_token_embeddings(len(tokenizer))
+    base_model.resize_token_embeddings(
+        128264
+    )  # todo: read this from somewhere (`len(tokenizer)` doesn't work)
     model = PeftModel.from_pretrained(base_model, peft_modelname)
+    model.merge_and_unload()
+    if merged_path:
+        model.save_pretrained(merged_path)
     return model, tokenizer
 
 
 def generate(model, tokenizer: PreTrainedTokenizer, messages: list):
+    # todo docstring
     input_ids = tokenizer.apply_chat_template(
         messages, add_generation_prompt=True, return_tensors="pt"
     ).to(model.device)
@@ -39,15 +51,22 @@ def generate(model, tokenizer: PreTrainedTokenizer, messages: list):
         do_sample=True,
         temperature=0.6,
         top_p=0.9,
-        # return_full_text=False,
-        # skip_special_tokens=True,
+        renormalize_logits=True,
+        num_return_sequences=5,
     )
-    response = outputs[0][input_ids.shape[-1] :]
-    output = tokenizer.decode(response, skip_special_tokens=True)
-    return output
+    texts = [
+        tokenizer.decode(o[input_ids.shape[-1] :], skip_special_tokens=True)
+        for o in outputs
+    ]
+    return texts
 
 
 def create_example_prompts(text: str = None):
+    """_summary_
+    # todo docstring, improve
+    :param text: _description_, defaults to None
+    :return: _description_
+    """
     if not text:
         text = TEST_ARTICLE
 
@@ -62,15 +81,34 @@ def create_example_prompts(text: str = None):
 
 
 def run_inference():
-    base_modelname = "DiscoResearch/Llama3_DiscoLM_German_8b_v0.1_experimental"
-    peft_modelname = "/home/nasrin/data/trainings/test-sft-lora-unsloth"
-
+    # todo docstring, argparse
+    base_modelname = "DiscoResearch/Llama3-DiscoLeo-Instruct-8B-v0.1"
+    peft_modelname = "/home/nasrin/data/trainings/discolm-ls-01/checkpoint-500"
+    merged_path = "/home/nasrin/data/trainings/discolm-ls-01/merged"
     messages = create_example_prompts()
-    model, tokenizer = load_model(
-        base_modelname=base_modelname, peft_modelname=peft_modelname
+
+    model, tokenizer = load_peft_model(
+        base_modelname=base_modelname,
+        peft_modelname=peft_modelname,
+        merged_path=merged_path,
     )
-    result = generate(model, tokenizer, messages)
-    print(result)
+    texts = generate(model, tokenizer, messages)
+    for text in texts:
+        print(text + "\n\n #-#-#-#-#-#-#-#-#")
+    return
+
+    # todo: remove or fix when vllm has better peft support
+    # if not os.path.exists(merged_path):
+    #     model, tokenizer = merge_peft_model(
+    #         base_modelname=base_modelname, peft_modelname=peft_modelname, new_path=merged_path
+    #     )
+    # else:
+    #     tokenizer = AutoTokenizer.from_pretrained(peft_modelname)
+
+    # llm = LLM(model=base_modelname, max_model_len=1024, enable_lora=True)
+    # lora_request = LoRARequest("ls_adapter", lora_int_id=1, lora_local_path=merged_path)
+    # outputs = generate_vllm(messages=messages, llm=llm, tokenizer=tokenizer, lora_request=lora_request)
+    # print(outputs)
 
 
 if __name__ == "__main__":
