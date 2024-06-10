@@ -1,69 +1,50 @@
-import datasets
-import pandas as pd
-import torch
 from transformers import (
-    pipeline,
-    Pipeline,
+    PreTrainedTokenizer,
 )
 import tiktoken
-
-from tqdm.auto import tqdm
-
-from leichte_sprache.utils.db_utils import ingest_pandas
+from vllm import LLM, SamplingParams, RequestOutput
+from vllm.lora.request import LoRARequest
 
 
-def load_pipeline(model_id: str) -> Pipeline:
-    # todo: docstring
+def generate_vllm(
+    messages: list,
+    llm: LLM,
+    tokenizer: PreTrainedTokenizer,
+    use_tqdm: bool = True,
+    lora_request: LoRARequest = None,
+) -> list[RequestOutput]:
+    """Generate with a transformers-compatible model using VLLM. Messages are
+    converted to plain text via the chat template and then passed to the model.
 
-    #  model_kwargs={"load_in_8bit": True}
-    pipe = pipeline(
-        "text-generation",
-        model=model_id,
-        device_map="auto",
-        torch_dtype=torch.float16,
-        # attn_implementation="flash_attention_2",
-    )
-    return pipe
-
-
-def generate(
-    dataset: datasets.Dataset,
-    pipe: Pipeline,
-    save_intermediary_steps: bool = True,
-    table_name: str = "dataset_singular_translated",
-    prompt_col_name: str = "prompts",
-    result_col_name: str = "translated",
-) -> pd.DataFrame:
-    # todo: docstring, return value typing
+    :param messages: list of prompts in the chat messages format
+    :param llm: VLLM LLAM instance
+    :param tokenizer: the model's tokenizer (to apply the correct chat template)
+    :param use_tqdm: show a tqdm progress bar. Default: True
+    :param lora_request: Optional VLLM LoRARequest instance. Default: None
+    :return: list of VLLM RequestOutput objects
+    """
     terminators = [
-        pipe.tokenizer.eos_token_id,
-        pipe.tokenizer.convert_tokens_to_ids("<|eot_id|>"),
+        tokenizer.eos_token_id,
+        tokenizer.convert_tokens_to_ids("<|eot_id|>"),
     ]
-    results = []
-
-    for row in tqdm(dataset.to_iterable_dataset(), total=len(dataset)):
-        out = pipe(
-            row[prompt_col_name],
-            max_new_tokens=1024,  # todo: configure max new tokens
-            eos_token_id=terminators,
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.9,
-            return_full_text=False,
+    sampling_params = SamplingParams(
+        max_tokens=512,
+        stop_token_ids=terminators,
+        temperature=0.6,
+        top_p=0.9,
+        skip_special_tokens=True,
+        top_k=50,
+    )
+    prompts = [
+        tokenizer.apply_chat_template(
+            message, add_generation_prompt=True, tokenize=False
         )
-        gen_text = out[0]["generated_text"]
-        row.update({result_col_name: gen_text})
-        results.append(row)
-
-        if len(results) % 5 == 0 and save_intermediary_steps:
-            # save the intermediary state
-            translation_df = pd.DataFrame(results)
-            translation_df[prompt_col_name] = translation_df[prompt_col_name].astype(
-                str
-            )
-            ingest_pandas(translation_df, table_name)
-            results = []
-    return pd.DataFrame(results)
+        for message in messages
+    ]
+    outputs = llm.generate(
+        prompts, sampling_params, use_tqdm=use_tqdm, lora_request=lora_request
+    )
+    return outputs
 
 
 def count_tokens_openai(model: str, texts: list[str]) -> list[int]:
