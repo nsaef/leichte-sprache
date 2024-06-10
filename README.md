@@ -85,9 +85,9 @@ This is where the crawled texts are stored. Table structure:
 
 | source        | text                                      | url                               | crawl_timestamp    | title                              | release_date      | full_text                                      | id                                   |
 |---------------|-------------------------------------------|-----------------------------------|--------------------|------------------------------------|-------------------|-----------------------------------------------|--------------------------------------|
-| dlf | lorem             | http://example.com/article1       | 2024-06-10 10:15:00 | title                  | 2024-06-01 08:00:00 | title \n lorem   | d41d8cd98f00b204e9800998ecf8427e     |
+| dlf | lorem             | http://example.com/article1       | 2024-06-10 10:15:00 | title                  | 2024-06-01 08:00:00 | title<br/>lorem   | d41d8cd98f00b204e9800998ecf8427e     |
 | ndr | ipsum    | http://example.com/article2       | 2024-06-10 11:30:00 | None            | 2024-06-05 09:00:00 | ipsum     | 098f6bcd4621d373cade4e832627b4f6     |
-| mdr  | foo | http://example.com/article3       | 2024-06-10 12:45:00 | title2                     | None | title2 \n foo      | ad0234829205b9033196ba818f7a872b     |
+| mdr  | foo | http://example.com/article3       | 2024-06-10 12:45:00 | title2                     | None | title2<br/>foo      | ad0234829205b9033196ba818f7a872b     |
 
 Columns:
 - `source`: name of the source website
@@ -104,9 +104,9 @@ Contains all available texts in Leichte Sprache (including datasets that were no
 
 | id                                   | text                                    | orig_ids                          |
 |--------------------------------------|-----------------------------------------|-----------------------------------|
-| d41d8cd98f00b204e9800998ecf8427e     | Title \n This is a short example text.           | [1, 2, 3]                         |
+| d41d8cd98f00b204e9800998ecf8427e     | Title<br/>This is a short example text.           | [1, 2, 3]                         |
 | 098f6bcd4621d373cade4e832627b4f6     | Another example with a different text.  | [4, 5, 6]                         |
-| ad0234829205b9033196ba818f7a872b     | Title2 \n More sample text for a different article.| http://example.com/article-3  |
+| ad0234829205b9033196ba818f7a872b     | Title2<br/>More sample text for a different article.| http://example.com/article-3  |
 
 Columns:
 - `id`: MD5 hash of the full text/ID field from `crawled_texts`
@@ -130,9 +130,9 @@ Columns:
 ### Dataset format
 The final parallel dataset is in the format:
 
-| id | leichte_sprache    | standard German              | source | url                        | release_date |
+| id | leichte_sprache    | standard_german              | source | url                        | release_date |
 |--- |------------------- |------------------------------|--------|----------------------------|--------------|
-| d41d8cd98f00b204e9800998ecf8427e | Title \n This is a short example text.  | text in standard German. | dlf    | http://example.com/article1| 2024-06-10 10:15:00 |
+| 2aa64159ff1108cbba73d89b9ed24a36 | Industrie-Gebiet<br/>Ein Gebiet ist ein Teil von einer Stadt:<br/>Oder es ist ein Teil von einem Land.<br/>In einem Industrie-Gebiet <br/>gibt es viele Fabriken und Betriebe.<br/>Zum Beispiel:<br/>    • Druckereien.<br/>       Da werden Bücher und Zeitungen gedruckt.<br/>    • Auto-Bauer<br/>    • oder Maschinen-Bauer.<br/>       Da werden große Maschinen gebaut.  | Das Industriegebiet ist eine geografische Einheit, die sich innerhalb einer Stadt oder eines Landes befindet und sich durch die Ansammlung von Fabriken und Betrieben auszeichnet. Beispielsweise umfasst ein Industriegebiet Druckereien, in denen Bücher und Zeitungen gedruckt werden, Automobilhersteller sowie Maschinenbauer, die große Maschinen produzieren. | dlf | https://www.mdr.de/nachrichten-leicht/woerterbuch/glossar-industrie-gebiet-100.html| 2018-03-16 09:13:00 |
 
 
 ## Next Steps
