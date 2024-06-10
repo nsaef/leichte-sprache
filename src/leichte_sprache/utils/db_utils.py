@@ -21,8 +21,8 @@ def dict_factory(cursor: sqlite3.Connection, row):
     Row provides indexed and case-insensitive named access to columns, with minimal memory overhead and performance impact over a tuple. To use Row as a row factory, assign it to the row_factory attribute.
     Note: not currently used due to pandas bug: https://github.com/pandas-dev/pandas/issues/52437
 
-    :param cursor: #todo
-    :param row: #todo
+    :param cursor: SQLite connection
+    :param row: Dataset row
     :return: dictionary with the column name and the row value
     """
     fields = [column[0] for column in cursor.description]
