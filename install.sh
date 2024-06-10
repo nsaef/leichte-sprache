@@ -1,5 +1,5 @@
 # set up environment
-conda create -y -n leichte_sprache python=3.12
+conda create -y -n leichte_sprache python=3.11
 conda activate leichte_sprache
 pip install -e .
 
