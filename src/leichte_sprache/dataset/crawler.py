@@ -27,7 +27,6 @@ from leichte_sprache.constants import (
     NDR,
     MDR_DICT,
     MDR_NEWS,
-    ALL_SOURCES,
 )
 from leichte_sprache.utils.db_utils import (
     insert_rows,
@@ -437,9 +436,7 @@ def crawl_ndr():
 def parse_mdr_article(page_url: str) -> dict:
     """Parse an MDR page in Leichte Sprache (news article or dictionary entry).
     Extract the title, text and release date of the page. The locale needs to be set
-    to German, as they use German month names in the release dates. If the German
-    locale isn't installed, this will result in errors!
-    #todo: install German locale in install script
+    to German, as they use German month names in the release dates.
 
     :param page_url: URL of the MDR article or dictionary entry
     :return: result dictionary containign the crawled data

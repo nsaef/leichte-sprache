@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from datasets import Dataset
 import evaluate
@@ -22,6 +23,10 @@ from leichte_sprache.constants import (
     FULL_TEXT_COLUMN,
     TRANSLATED_COLUMN,
 )
+from leichte_sprache.dataset.transform_singular_dataset import (
+    transform_singular_dataset,
+)
+from leichte_sprache.dataset.crawler import run_crawler
 from leichte_sprache.utils.db_utils import (
     create_column_dict,
     create_table,
@@ -36,7 +41,9 @@ logger = get_logger()
 
 def setup_crawler_db_table():
     """Initial setup of an SQLite table for storing the crawled data.
-    Creates the columns `source`, `text`, `url`, `crawl_timestamp`, `title`, `release_date`, `full_text` and `id`
+    Creates the columns `source`, `text`, `url`, `crawl_timestamp`,
+    `title`, `release_date`, `full_text` and `id` if the table doesn't
+    already exist
     """
     logger.info(f"Initializing table {CRAWLER_TABLE}")
     columns = [
@@ -209,14 +216,70 @@ def create_hf_dataset():
     return
 
 
-# todo: different subsets of the dataset for generation and classification
-# docs:
-# english_dataset.push_to_hub("<organization>/<dataset_id>", "en")
-# french_dataset.push_to_hub("<organization>/<dataset_id>", "fr")
-# # later
-# english_dataset = load_dataset("<organization>/<dataset_id>", "en")
-# french_dataset = load_dataset("<organization>/<dataset_id>", "fr")
+def load_konvens(dirname: str) -> pd.DataFrame:
+    """
+    Load the konvens dataset file(s) and parse them into a standardized format. Combine sentences that belong to the same text
+    and preserve the original IDs. Returns a dataframe containing a UUID, the combined text and the original IDs.
+    :param dirname: path of the directory containing the konvens file(s) relative to the root directory
+    :return: dataframe contianing the konvens data
+    """
+    filenames = os.listdir(dirname)
+    data = []
+    for fname in filenames:
+        if not fname.startswith("konvens_"):
+            continue
+        fpath = f"{dirname}/{fname}"
+        df = pd.read_csv(fpath)
+        topics = set(df.topic)
+        for topic in topics:
+            text = "\n".join(list(df[df.topic == topic].phrase)).replace(
+                " \\newline ", "\n"
+            )
+            orig_ids = ",".join(list(df[df.topic == topic]["sent-id"].astype(str)))
+            data.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "text": text,
+                    "orig_ids": orig_ids,
+                }
+            )
+    data_df = pd.DataFrame(data)
+    return data_df
 
 
-# if __name__ == "__main__":
-#     pass
+def create_singular_dataset():
+    """Create the singular dataset (only Leichte Sprache) by loading
+    the Konvens data and all crawled data and storing the relevant data
+    in a new combined database table.
+    """
+    dirname = "data/datasets"
+    datasets = []
+
+    konvens_data = load_konvens(dirname)
+    datasets.append(konvens_data)
+
+    # load the konvens data into DB
+    df = pd.concat(datasets) if len(datasets) > 1 else datasets[0]
+    ingest_pandas(df, DATASET_SINGULAR_TABLE)
+
+    # store the relevant part of the crawled texts in the singular dataset table
+    transform_to_singular_dataset()
+    return
+
+
+def run_data_pipeline():
+    """Run the complete data pipeline. Create the crawler table if it doesn't exist
+    already, crawl all available datasets, load the konvens data and combine all
+    available data in Leichte Sprache in a new database table.
+    Take the complete content of that table and translate it to standard German
+    using an LLM. Filter the automatically created data and create a dataset with
+    all rows that match the filter criteria. Push this dataset to the HF hub.
+
+    Take care! Running this whole workflow will take some hours (depending on your hardware).
+    """
+    setup_crawler_db_table()
+    run_crawler(dlf_dict=True, dlf_news=True, ndr=True, mdr_dict=True, mdr_news=True)
+    create_singular_dataset()
+    transform_singular_dataset()
+    create_hf_dataset()
+    return
