@@ -113,7 +113,10 @@ class DataTrainingArguments:
 
 
 def transform_to_chat(
-    row, tokenizer, col_user: str = "translated", col_assistant: str = "text"
+    row,
+    tokenizer,
+    col_user: str = "standard_german",
+    col_assistant: str = "leichte_sprache",
 ):
     # todo docstring
     # todo: change default to final column names
@@ -138,7 +141,7 @@ def transform_to_chat(
 
 
 def prepare_data(dataset_path, tokenizer):
-    dataset = load_dataset("csv", data_files=dataset_path, split="train")
+    dataset = load_dataset(dataset_path, split="train")
     dataset = dataset.map(transform_to_chat, fn_kwargs={"tokenizer": tokenizer})
     return dataset
 
