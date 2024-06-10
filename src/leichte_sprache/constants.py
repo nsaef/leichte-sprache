@@ -18,6 +18,14 @@ ID_COLUMN = "id"
 TRANSLATED_COLUMN = "translated"
 
 
+### Crawler arguments ###
+DLF_DICT = "dlf_dict"
+DLF_NEWS = "dlf_news"
+NDR = "ndr"
+MDR_DICT = "mdr_dict"
+MDR_NEWS = "mdr_news"
+ALL_SOURCES = "all_sources"
+
 ### huggingface ###
 HF_DATASET_NAME = "nsaef/German_leichte_sprache"
 
