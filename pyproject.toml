@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leichte_sprache"
-requires-python = ">= 3.11"
+requires-python = ">=3.9"
 authors = [
   {name = "Nasrin Saef", email = "saefnasrin@gmail.com"},
 ]
