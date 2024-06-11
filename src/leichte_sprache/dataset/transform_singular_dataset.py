@@ -5,6 +5,15 @@ from transformers import AutoTokenizer
 from tqdm import tqdm
 from vllm import LLM
 
+from leichte_sprache.constants import (
+    DATASET_SINGULAR_TABLE,
+    DATASET_TRANSLATED_TABLE,
+    TEXT_COLUMN,
+    TRANSLATED_COLUMN,
+    PROMPTS_COLUMN,
+    ORIG_IDS_COLUMN,
+    ID_COLUMN,
+)
 from leichte_sprache.utils.db_utils import ingest_pandas, get_connector
 from leichte_sprache.utils.model_utils import generate_vllm
 from leichte_sprache.utils.utils import get_logger
@@ -13,7 +22,9 @@ from leichte_sprache.utils.utils import get_logger
 logger = get_logger()
 
 
-def create_prompt(row, text_col_name: str = "text", return_col_name: str = "prompts"):
+def create_prompt(
+    row, text_col_name: str = TEXT_COLUMN, return_col_name: str = PROMPTS_COLUMN
+):
     """Create a prompt in the chat message format from the column containing the text.
     Adds a system prompt explaining the linguistic properties of "Standard-Deutsch" and
     a user prompt asking to translate the Leichte Sprache into Standard-Deutsch.
@@ -58,8 +69,8 @@ def load_and_prepare_dataset_from_db() -> datasets.Dataset:
     :return: HF Dataset based on the CSV file, with added "prompts" column
     """
 
-    query = """SELECT id, text, orig_ids FROM dataset_singular 
-    WHERE id NOT IN (SELECT id FROM dataset_singular_translated);
+    query = f"""SELECT {ID_COLUMN}, {TEXT_COLUMN}, {ORIG_IDS_COLUMN} FROM {DATASET_SINGULAR_TABLE} 
+    WHERE id NOT IN (SELECT {ID_COLUMN} FROM {DATASET_TRANSLATED_TABLE});
     """
     conn = get_connector()
     dataset = datasets.Dataset.from_sql(query, con=conn)
@@ -71,9 +82,9 @@ def load_and_prepare_dataset_from_db() -> datasets.Dataset:
 def run_vllm_generation(
     dataset: datasets.Dataset,
     model_id: str,
-    table_name: str = "dataset_singular_translated",
-    prompt_col_name: str = "prompts",
-    result_col_name: str = "translated",
+    table_name: str = DATASET_TRANSLATED_TABLE,
+    prompt_col_name: str = PROMPTS_COLUMN,
+    result_col_name: str = TRANSLATED_COLUMN,
     batch_size: int = 20,
 ):
     """Generate output from prompts in a dataset using VLLM. The prompts are batched

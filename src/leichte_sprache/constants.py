@@ -17,6 +17,8 @@ FULL_TEXT_COLUMN = "full_text"
 ID_COLUMN = "id"
 TRANSLATED_COLUMN = "translated"
 CHAT_COLUMN = "chat"
+PROMPTS_COLUMN = "prompts"
+ORIG_IDS_COLUMN = "orig_ids"
 
 
 ### Crawler arguments ###

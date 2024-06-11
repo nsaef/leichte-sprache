@@ -10,6 +10,7 @@ nltk==3.8.1
 pandas==2.2.2
 peft==0.11.1
 pre-commit==3.7.1
+pytest==8.2.2
 python-dotenv==1.0.1
 rouge_score==0.1.2
 selenium==4.21.0
