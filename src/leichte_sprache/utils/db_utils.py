@@ -2,14 +2,20 @@ import sqlite3
 
 import pandas as pd
 
+from leichte_sprache.utils.utils import get_logger
 
-def get_connector() -> sqlite3.Connection:
+
+logger = get_logger()
+
+
+def get_connector(dbname: str = "data/leichte_sprache.db") -> sqlite3.Connection:
     """
     Connect to the project's SQLite database. Overwrite the default row factory that returns
     tuples with one that returns dictionaries.
+    :param dbname: path of the SQLite DB
     :return: connector object
     """
-    conn = sqlite3.connect("data/leichte_sprache.db")
+    conn = sqlite3.connect(dbname)
     # conn.row_factory = dict_factory
     return conn
 
@@ -48,7 +54,13 @@ def create_column_dict(
     }
 
 
-def create_table(name: str, columns: list[dict], dry_run: bool = False) -> None:
+def create_table(
+    name: str,
+    columns: list[dict],
+    dry_run: bool = False,
+    conn: sqlite3.Connection = None,
+    close_conn: bool = True,
+) -> None:
     """
     Create a table in the project's database. For each column, provide a dictionary
     in the following format:
@@ -63,9 +75,11 @@ def create_table(name: str, columns: list[dict], dry_run: bool = False) -> None:
     :param name: table name
     :param columns: list of dictionaries in the format specified above, one dict per column
     :param dry_run: don't execute the statement, just print it
+    :param conn: optional SQLite connector. If None is given, the project's default DB is used.
+    :param close_conn: close the connection after running the code. Default: True. May be set to False if an existing connection is passed to this function and continues to be used in the calling function.
     """
-
-    conn = get_connector()
+    if not conn:
+        conn = get_connector()
     sql = f"CREATE TABLE IF NOT EXISTS {name} (\n"
 
     for col in columns:
@@ -81,36 +95,48 @@ def create_table(name: str, columns: list[dict], dry_run: bool = False) -> None:
     if not dry_run:
         conn.execute(sql)
         conn.commit()
-        print(f"Created table {name} in project DB")
+        logger.info(f"Created table {name} in project DB")
     else:
-        print(sql)
-    conn.close()
+        logger.info(sql)
+    if close_conn:
+        conn.close()
     return
 
 
-def insert_rows(table_name: str, rows: list[dict], dry_run: bool = False):
+def insert_rows(
+    table_name: str,
+    rows: list[dict],
+    dry_run: bool = False,
+    conn: sqlite3.Connection = None,
+    close_conn: bool = True,
+):
     """Insert rows into a given table. To only print the generated SQL statement, set `dry_run=True`.
 
     :param table_name: name of the table in which to insert the data
     :param rows: list containing one dictionary per row. The dictionary keys must match the table's column names.
     :param dry_run: Don't run the command, just print the SQL statement. Defaults to False
+    :param conn: optional SQLite connector. If None is given, the project's default DB is used.
+    :param close_conn: close the connection after running the code. Default: True. May be set to False if an existing connection is passed to this function and continues to be used in the calling function.
+
     """
     # only use rows that share the same keys
     ref_keys = rows[0].keys()
     valid_rows = [r for r in rows if r.keys() == ref_keys]
     col_names = ", ".join([f":{k}" for k in ref_keys])
 
-    conn = get_connector()
+    if not conn:
+        conn = get_connector()
     sql = f"INSERT INTO {table_name} VALUES({col_names})"
 
     if not dry_run:
         conn.executemany(sql, valid_rows)
         conn.commit()
-        print(f"Inserted {len(rows)} rows into table {table_name}")
+        logger.info(f"Inserted {len(rows)} rows into table {table_name}")
     else:
-        print(sql)
+        logger.info(sql)
 
-    conn.close()
+    if close_conn:
+        conn.close()
     return
 
 
