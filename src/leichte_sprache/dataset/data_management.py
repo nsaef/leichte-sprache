@@ -1,7 +1,14 @@
 import os
 import uuid
 
-from datasets import Dataset
+from datasets import (
+    Dataset,
+    load_dataset,
+    ClassLabel,
+    Features,
+    Value,
+    concatenate_datasets,
+)
 import evaluate
 from lingua import Language, LanguageDetectorBuilder
 import pandas as pd
@@ -21,6 +28,8 @@ from leichte_sprache.constants import (
     RELEASE_COLUMN,
     FULL_TEXT_COLUMN,
     TRANSLATED_COLUMN,
+    LS_LABEL,
+    SG_LABEL,
 )
 from leichte_sprache.dataset.transform_singular_dataset import (
     transform_singular_dataset,
@@ -210,10 +219,18 @@ def create_hf_dataset():
     filtered_df = filtered_df.shuffle()
 
     # push to hub
-    dataset.push_to_hub(os.getenv("HF_DATASET_NAME"), token=os.getenv("HF_TOKEN"))
-    logger.info(
-        f"Pushed dataset with {len(dataset)} lines to repo {os.getenv("HF_DATASET_NAME")}"
-    )
+    push_to_hf_hub(dataset, os.getenv("HF_DATASET_NAME"))
+    return
+
+
+def push_to_hf_hub(dataset: Dataset, name: str):
+    """Push a dataset to the huggingface data hub.
+
+    :param dataset: dataset object
+    :param name: dtaset name
+    """
+    dataset.push_to_hub(name, token=os.getenv("HF_TOKEN"))
+    logger.info(f"Pushed dataset with {len(dataset)} lines to repo {name}")
     return
 
 
@@ -290,3 +307,68 @@ def run_data_pipeline():
     transform_singular_dataset()
     create_hf_dataset()
     return
+
+
+def create_classification_dataset():
+    ls_dataset = load_dataset(os.getenv("HF_DATASET_NAME"), split="train")
+
+    # load a news dataset, as this is the most common text type in the LS dataset
+    news_dataset = load_dataset("bjoernp/tagesschau-010124-020524", split="train").map(
+        lambda x: {"content": f"{x['headline']}\n{x['article']}"}
+    )
+
+    target_len = int((len(ls_dataset) - len(news_dataset)) / 2)
+    wiki_dataset = (
+        load_dataset("wikimedia/wikipedia", "20231101.de", split="train")
+        .shuffle()
+        .select(range(target_len))
+        .map(lambda x: {"content": f"{x['title']}\n{x['text']}"})
+    )
+    web_dataset = (
+        load_dataset("uonlp/CulturaX", "de", split="train", streaming=True)
+        .shuffle()
+        .take(target_len)
+    )
+    web_texts = [row["text"] for row in web_dataset]
+
+    ls = Dataset.from_dict(
+        {
+            "text": ls_dataset[LS_COLUMN],
+            "label": [LS_LABEL] * len(ls_dataset),
+            "source": ["leichte_sprache"] * len(ls_dataset),
+        }
+    )
+    news = Dataset.from_dict(
+        {
+            "text": news_dataset["content"],
+            "label": [SG_LABEL] * len(news_dataset),
+            "source": ["news"] * len(news_dataset),
+        }
+    )
+    wiki = Dataset.from_dict(
+        {
+            "text": wiki_dataset["content"],
+            "label": [SG_LABEL] * len(wiki_dataset),
+            "source": ["wiki"] * len(wiki_dataset),
+        }
+    )
+    web = Dataset.from_dict(
+        {
+            "text": web_texts,
+            "label": [SG_LABEL] * len(web_texts),
+            "source": ["web"] * len(web_texts),
+        }
+    )
+
+    labels = ClassLabel(num_classes=2, names=[SG_LABEL, LS_LABEL])
+    features = Features(
+        {"text": Value("string"), "label": labels, "source": Value("string")}
+    )
+    dataset = concatenate_datasets([ls, news, wiki, web]).cast(features)
+
+    push_to_hf_hub(dataset, os.getenv("HF_CLASSIFICATION_DATASET_NAME"))
+    return
+
+
+if __name__ == "__main__":
+    create_classification_dataset()
