@@ -5,6 +5,7 @@ beautifulsoup4==4.12.3
 bitsandbytes==0.43.1
 datasets==2.19.2
 evaluate==0.4.2
+lingua-language-detector==2.0.2
 mlflow==2.13.2
 nltk==3.8.1
 pandas==2.2.2
