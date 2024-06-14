@@ -11,3 +11,6 @@ sudo locale-gen de_DE.utf8
 
 # set up data dir
 mkdir -p data
+
+# get spacy model
+python -m spacy download de_core_news_sm
