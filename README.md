@@ -42,7 +42,8 @@ In order to use all functionalities, you need to create a `.env` file from `.env
 The package comes with multiple entrypoints. A complete workflow could look like this:
 - `initialize_db`: Set up an SQLite database 
 - `crawl_all`: Crawl all supported sources and store their contents in the SQLite DB
-- `create_singular_dataset`: Process a dataset in Leichte Sprache from Konvens 2024 and store it in the SQLite DB in the same format as the crawled texts
+- `create_singular_dataset`: Process a dataset in Leichte Sprache from Konvens 2024 and store it in the SQLite DB in the same format as the crawled texts; store the crawled_text data in the singular_dataset table OR
+- `run_singular_dataset`: Only transfer the data from the crawled_texts DB to the singular_dataset table
 - `translate_singular_dataset`: Translate the singular dataset from Leichte Sprache to standard German via an LLM. Intermediary saves to the DB are made regularly, and when re-running the command, only rows of the singular dataset that haven't been translated yet are loaded. Depending on your hardware, this step may take a while.
 - `push_dataset_to_hub`: Remove undesirable rows from the dataset, then push it to the HuggingFace dataset hub. The HuggingFace repo name must be specified in the `.env` file.
 

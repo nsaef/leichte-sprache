@@ -2,10 +2,12 @@ from argparse import ArgumentParser
 from datetime import datetime
 from hashlib import md5
 import locale
+import re
 from time import sleep
 import unicodedata
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -27,20 +29,51 @@ from leichte_sprache.constants import (
     NDR,
     MDR_DICT,
     MDR_NEWS,
+    HURRAKI,
 )
 from leichte_sprache.utils.db_utils import (
     insert_rows,
 )
 
 
-def make_soup(url: str) -> BeautifulSoup:
-    """Helper function to create a BS4 object.
+def make_soup(
+    url: str,
+    total_retries: int = 5,
+    backoff_factor: float = 1.0,
+    max_long_retries: int = 5,
+    long_retry_delay: int = 30,
+) -> BeautifulSoup:
+    """Helper function to create a BS4 object. Includes two different retry mechanisms:
+    - URLLib retries: python URLLib standard implementation for short-delay retries. Can be configured via `total_retries` and `backoff_factor`.
+    - long delay retries: if the short URLLib retries fail, try waiting a longwer amount of time before retrying. Can be configured via `max_long_retries` and `long_retry_delay`.
 
     :param url: page URL
+    :param total_retries: max retries using the URLLib retry functionality. Default: 5
+    :param backoff_factor: factor for exponentiall backoff for URLLib retries in seconds. Default: 1
+    :param max_long_retries: Maximum allowed number of retries with a long delay. Default: 5
+    :param long_retry_delay: Long delay before retrying, to avoid spamming a website with requests. Default: 30 seconds.
     :raises requests.exceptions.HTTPError: if the website can't be retrieved, raise an HttpError
     :return: bs4 soup object
     """
-    response = requests.get(url)
+    s = requests.Session()
+    retries = Retry(
+        total=total_retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[500, 502, 503, 504],
+    )
+    s.mount("http://", HTTPAdapter(max_retries=retries))
+
+    retries = 1
+    success = False
+    while not success and retries < max_long_retries:
+        response = requests.get(url)
+        if response.status_code == 200:
+            success = True
+        else:
+            wait = retries * long_retry_delay
+            sleep(wait)
+            retries += 1
+
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, "html.parser")
         return soup
@@ -539,8 +572,63 @@ def crawl_mdr(crawl_dict: bool, crawl_news: bool):
     return
 
 
+def parse_hurraki_article(url: str) -> dict:
+    """Crawl a Hurraki wiki page. Ignore the section that refers similar works
+    and remove the wiki-elements such as edit links on subheadings.
+
+    :param url: article URL
+    :return: result dictionary for the page
+    """
+    soup = make_soup(url)
+
+    title = soup.select_one("h1").text
+
+    synonyms_text = "Gleiche Wörter[Bearbeiten | Quelltext bearbeiten]"
+    content = soup.select_one("div#mw-content-text div.mw-parser-output")
+    text = ""
+    for child in content.children:
+        if child.name not in ["p", "h2"]:
+            continue
+        if child.name == "h2" and child.text == synonyms_text:
+            continue
+        previous_subheading = child.find_previous("h2")
+        if previous_subheading and previous_subheading.text == synonyms_text:
+            continue
+        par_text = child.text.replace("[Bearbeiten | Quelltext bearbeiten]", "")
+        cleaned = re.sub(r"\n{3,}", "\\n\\n", par_text)
+        text += cleaned
+    result = make_result(
+        text=text, source="hurraki", url=url, crawl_date=datetime.now(), title=title
+    )
+    return result
+
+
+def crawl_hurraki():
+    """Crawl the Hurraki wiki in Leichte Sprache."""
+    base_url = "https://hurraki.de/wiki/Hurraki:Artikel_von_A_bis_Z"
+    selector = "#mw-content-text > div.mw-parser-output > table:nth-child(3) a"
+    links = get_links_per_page(
+        base_url, selector=selector, url_prefix="https://hurraki.de"
+    )
+    articles = []
+
+    for link in tqdm(links, desc="Parsing Hurraki articles"):
+        if "index.php" in link:
+            continue
+        res = parse_hurraki_article(link)
+        articles.append(res)
+
+    insert_rows(table_name=CRAWLER_TABLE, rows=articles)
+    return
+
+
 def run_crawler(
-    dlf_dict: bool, dlf_news: bool, ndr: bool, mdr_dict: bool, mdr_news: bool
+    dlf_dict: bool,
+    dlf_news: bool,
+    ndr: bool,
+    mdr_dict: bool,
+    mdr_news: bool,
+    hurraki: bool,
 ):
     """Crawl content in Leichte Sprache.
 
@@ -554,6 +642,8 @@ def run_crawler(
     crawl_mdr(crawl_dict=mdr_dict, crawl_news=mdr_news)
     if ndr:
         crawl_ndr()
+    if hurraki:
+        crawl_hurraki()
     return
 
 
@@ -567,7 +657,7 @@ def parse_args() -> ArgumentParser:
     )
     parser.add_argument(
         "--sources",
-        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS],
+        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS, HURRAKI],
         nargs="*",
         help="Select the sources to crawl. If this argument is not used, all sources will be crawled.",
     )
@@ -585,4 +675,5 @@ if __name__ == "__main__":
         ndr=True if not args.sources or NDR in args.sources else False,
         mdr_dict=True if not args.sources or MDR_DICT in args.sources else False,
         mdr_news=True if not args.sources or MDR_NEWS in args.sources else False,
+        hurraki=True if not args.sources or HURRAKI in args.sources else False,
     )

@@ -161,5 +161,8 @@ cython_debug/
 
 
 # project specific
+*.db
+.vscode/*
 data/*
 leichte_sprache/dataset/files/train.csv:Zone.Identifier
+scripts/*

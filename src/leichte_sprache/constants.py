@@ -32,6 +32,7 @@ DLF_NEWS = "dlf_news"
 NDR = "ndr"
 MDR_DICT = "mdr_dict"
 MDR_NEWS = "mdr_news"
+HURRAKI = "hurraki"
 ALL_SOURCES = "all_sources"
 
 
