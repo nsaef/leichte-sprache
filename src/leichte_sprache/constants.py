@@ -4,6 +4,11 @@ DATASET_SINGULAR_TABLE = "dataset_singular"
 DATASET_TRANSLATED_TABLE = "dataset_singular_translated"
 
 
+## dataset labels ###
+LS_LABEL = "leichte_sprache"
+SG_LABEL = "standard_german"
+
+
 ### column names ###
 LS_COLUMN = "leichte_sprache"
 SG_COLUMN = "standard_german"

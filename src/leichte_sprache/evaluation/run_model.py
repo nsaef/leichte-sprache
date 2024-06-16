@@ -19,6 +19,34 @@ from leichte_sprache.utils.utils import get_logger
 logger = get_logger()
 
 
+def parse_args() -> ArgumentParser:
+    """Parse the command line arguments to select the sources to crawl.
+
+    :return: ArgumentParser with command line arguments.
+    """
+
+    parser = ArgumentParser(
+        prog="Leichte Sprache Inference",
+        description="Run inference on a finetuned model",
+    )
+    parser.add_argument(
+        "--base_model",
+        required=True,
+        help="Name or path of the base model of the finetuned model",
+    )
+    parser.add_argument(
+        "--peft_model",
+        required=True,
+        help="Name or path of the finetuned model weights",
+    )
+    parser.add_argument(
+        "--merged_path",
+        help="Optional path to store the merged model weights.",
+    )
+    args = parser.parse_args()
+    return args
+
+
 def load_peft_model(
     base_modelname: str, peft_modelname: str, merged_path: str = None
 ) -> tuple[PeftModel, PreTrainedTokenizer]:
@@ -42,7 +70,7 @@ def load_peft_model(
     model.merge_and_unload()
     if merged_path and not os.path.exists(merged_path):
         model.save_pretrained(merged_path)
-    elif os.path.exists(merged_path):
+    elif merged_path:
         logger.warning(
             f"Path {merged_path} already exists! Skipping saving the merged model weights."
         )
@@ -137,51 +165,31 @@ def run_inference_vllm_do_not_use(args: ArgumentParser):
     # todo: fix when vllm has better peft support. Do not use until then.
 
     messages = create_prompt()
-    model, tokenizer = load_peft_model(
-        base_modelname=args.base_model,
-        peft_modelname=args.peft_model,
-        new_path=args.merged_path,
+    # model, tokenizer = load_peft_model(
+    #     base_modelname=args.base_model,
+    #     peft_modelname=args.peft_model,
+    #     merged_path=args.merged_path,
+    # )
+    llm = LLM(
+        model=args.base_model,
+        # qlora_adapter_name_or_path=args.peft_model,
+        max_model_len=1024,
+        enable_lora=True,
+        quantization="bitsandbytes",
+        load_format="bitsandbytes",
     )
-
-    llm = LLM(model=args.base_modelname, max_model_len=1024, enable_lora=True)
     lora_request = LoRARequest(
-        "ls_adapter", lora_int_id=1, lora_local_path=args.merged_path
+        "ls_adapter", lora_int_id=1, lora_local_path=args.peft_model
     )
+    tokenizer = AutoTokenizer.from_pretrained(args.peft_model)
     outputs = generate_vllm(
-        messages=messages, llm=llm, tokenizer=tokenizer, lora_request=lora_request
+        messages=[messages], llm=llm, tokenizer=tokenizer, lora_request=lora_request
     )
     print(outputs)
     return
 
 
-def parse_args() -> ArgumentParser:
-    """Parse the command line arguments to select the sources to crawl.
-
-    :return: ArgumentParser with command line arguments.
-    """
-
-    parser = ArgumentParser(
-        prog="Leichte Sprache Inference",
-        description="Run inference on a finetuned model",
-    )
-    parser.add_argument(
-        "--base_model",
-        required=True,
-        help="Name or path of the base model of the finetuned model",
-    )
-    parser.add_argument(
-        "--peft_model",
-        required=True,
-        help="Name or path of the finetuned model weights",
-    )
-    parser.add_argument(
-        "--merged_path",
-        help="Optional path to store the merged model weights.",
-    )
-    args = parser.parse_args()
-    return args
-
-
 if __name__ == "__main__":
     args = parse_args()
     run_inference(args)
+    # run_inference_vllm_do_not_use(args)

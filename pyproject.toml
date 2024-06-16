@@ -21,6 +21,7 @@ push_dataset_to_hub = "leichte_sprache.dataset.data_management:create_hf_dataset
 run_data_pipeline = "leichte_sprache.dataset.data_management:run_data_pipeline"
 run_singular_dataset = "leichte_sprache.dataset.data_management:transform_to_singular_dataset"
 translate_singular_dataset = "leichte_sprache.dataset.transform_singular_dataset:transform_singular_dataset"
+create_classification_dataset = "leichte_sprache.dataset.data_management:create_classification_dataset"
 
 [tool.setuptools.dynamic]
 version = {attr = "leichte_sprache.__version__"}

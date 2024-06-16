@@ -36,8 +36,9 @@ In order to use all functionalities, you need to create a `.env` file from `.env
 
 ## Usage
 
+### Text Generation
 
-### Data Preparation
+#### Data Preparation
 The package comes with multiple entrypoints. A complete workflow could look like this:
 - `initialize_db`: Set up an SQLite database 
 - `crawl_all`: Crawl all supported sources and store their contents in the SQLite DB
@@ -47,10 +48,10 @@ The package comes with multiple entrypoints. A complete workflow could look like
 
 All the above functionalities can also be run with the single command `run_data_pipeline`. Note that this is expected to run for at least a few hours.
 
-### Model Training
+#### Model Training
 To train a model with the data created above, run the following steps:
 
-#### Set up MLFLow
+##### Set up MLFLow
 The training script expects an MLFlow instance to which the training results are logged. To set it up, run:
 
 ```shell
@@ -65,22 +66,22 @@ MLFLOW_EXPERIMENT_NAME = "leichte_sprache"
 MLFLOW_TRACKING_URI = "http://IP:5555/"
 ```
 
-#### Create a train config
+##### Create a train config
 Create a YAML file containing the training parameters. For an example, see `src/leichte_sprache/training/example_training_args.yaml`
 
-#### Run the training
+##### Run the training
 Run `python src/leichte_sprache/training/train.py PATH_TO_CONFIG.YAML` to finetune a model using PEFT. Adapt the parameters to your needs and your machine's capabilities.
 
-#### Test the model
+##### Test the model
 Run `python src/leichte_sprache/evaluation/run_model.py --base_model BASE_MODEL_NAME --peft_model CHECKPOINT_PATH` in order to generate a handful of example texts with the finetuned model.
 
 Note: this is still rather rudimentary and will be extended in the future.
 
-## Data Structures
-### DB Structure
+### Data Structures
+#### DB Structure
 The SQLite DB created for this project is stored in the `data` directory. It will have the following tables after processing has run:
 
-#### crawled_texts
+##### crawled_texts
 This is where the crawled texts are stored. Table structure:
 
 | source        | text                                      | url                               | crawl_timestamp    | title                              | release_date      | full_text                                      | id                                   |
@@ -99,7 +100,7 @@ Columns:
 - `full_text`: concatenation of the title and the text
 - `id`: MD5 hash of the full text
 
-#### dataset_singular
+##### dataset_singular
 Contains all available texts in Leichte Sprache (including datasets that were not crawled). Table structure:
 
 | id                                   | text                                    | orig_ids                          |
@@ -113,7 +114,7 @@ Columns:
 - `text`: title + article text with basic processing (utf-8 encoding, strip spaces)/full_text from `crawled_texts`
 - `orig_ids`: identifier(s) from the original source, i.e. IDs or URLs
 
-#### dataset_singular_translated
+##### dataset_singular_translated
 This table contains the parallel dataset created via artificial data generation. Table structure:
 
 | id                                   | text                                    | orig_ids                          | prompts                                                         | translated                               |
@@ -127,13 +128,23 @@ Columns:
 - `prompts`: prompt used to create the translated example (for documentation purposes)
 - `translated`: text automatically translated to standard German
 
-### Dataset format
+#### Dataset format
 The final parallel dataset is in the format:
 
 | id | leichte_sprache    | standard_german              | source | url                        | release_date |
 |--- |------------------- |------------------------------|--------|----------------------------|--------------|
 | 2aa64159ff1108cbba73d89b9ed24a36 | Industrie-Gebiet<br/>Ein Gebiet ist ein Teil von einer Stadt:<br/>Oder es ist ein Teil von einem Land.<br/>In einem Industrie-Gebiet <br/>gibt es viele Fabriken und Betriebe.<br/>Zum Beispiel:<br/>    • Druckereien.<br/>       Da werden Bücher und Zeitungen gedruckt.<br/>    • Auto-Bauer<br/>    • oder Maschinen-Bauer.<br/>       Da werden große Maschinen gebaut.  | Das Industriegebiet ist eine geografische Einheit, die sich innerhalb einer Stadt oder eines Landes befindet und sich durch die Ansammlung von Fabriken und Betrieben auszeichnet. Beispielsweise umfasst ein Industriegebiet Druckereien, in denen Bücher und Zeitungen gedruckt werden, Automobilhersteller sowie Maschinenbauer, die große Maschinen produzieren. | mdr | https://www.mdr.de/nachrichten-leicht/woerterbuch/glossar-industrie-gebiet-100.html| 2018-03-16 09:13:00 |
 
+
+### Evaluation & Classification
+
+#### Dataset
+The basis both for training a classifier and for creating rule-based evaluation method is a labelled dataset of samples in Leichte Sprache and Standard German. All data is human-written. The Leichte Sprache is taken from the generation dataset, the standard German is compiled from various public datasets and consists of news texts, Wikipedia articles and a small subset of a C4 variant.
+
+In order to create the classification dataset:
+
+- set the environment variable `HF_CLASSIFICATION_DATASET_NAME`
+-  run the entrypoint `create_classification_dataset`
 
 ## Next Steps
 - add tests for crawler
