@@ -9,7 +9,7 @@ from datasets import (
     Value,
     concatenate_datasets,
 )
-
+from lingua import Language
 import pandas as pd
 
 from leichte_sprache.constants import (
@@ -99,7 +99,7 @@ def transform_to_singular_dataset():
 
 def filter_translated_dataset(
     dataset: Dataset,
-    rouge_threshold: float = 0.7,
+    rouge_threshold: float = 0.65,
     ls_col: str = LS_COLUMN,
     sg_col: str = SG_COLUMN,
 ) -> Dataset:
