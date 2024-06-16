@@ -142,7 +142,8 @@ def remove_bad_generations():
      The following filters are applied:
     - bigram overlap (rouge2): remove examples above a certain rouge threshold,
       to filter examples that were barely altered
-    - language recognition: remove examples that were wrongfully generated in English
+    - language recognition: remove examples that were wrongfully generated in another
+    language than German (or where nothing was generated)
     """
     logger.info("Removing bad generations from the translated dataset...")
 
@@ -150,13 +151,13 @@ def remove_bad_generations():
     sql = f"SELECT * FROM {DATASET_TRANSLATED_TABLE}"
     dataset = Dataset.from_sql(sql, con=conn)
     dataset_filtered = filter_translated_dataset(
-        dataset, ls_col="text", sg_col="translated"
+        dataset, ls_col=TEXT_COLUMN, sg_col=TRANSLATED_COLUMN
     )
     dataset_filtered = dataset_filtered.remove_columns(["rouge2", "lang_sg"])
 
     # remove duplicates
     df = dataset_filtered.to_pandas()
-    df = df.drop_duplicates(subset="id")
+    df = df.drop_duplicates(subset=ID_COLUMN)
     logger.info(f"Removed {len(dataset_filtered) - len(df)} duplicate rows")
 
     ingest_pandas(df, DATASET_TRANSLATED_TABLE, if_exists="replace")
