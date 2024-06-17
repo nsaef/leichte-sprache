@@ -1,9 +1,15 @@
 from argparse import ArgumentParser
 import os
+from time import time
 
 import torch
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedTokenizer,
+    BitsAndBytesConfig,
+)
 from vllm import LLM
 from vllm.lora.request import LoRARequest
 
@@ -62,10 +68,9 @@ def load_peft_model(
         base_modelname,
         torch_dtype=torch.float16,
         device_map={"": 0},
+        attn_implementation="flash_attention_2",
     )
-    base_model.resize_token_embeddings(
-        128264
-    )  # todo: read this from somewhere (`len(tokenizer)` doesn't work)
+    base_model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
     model = PeftModel.from_pretrained(base_model, peft_modelname)
     model.merge_and_unload()
     if merged_path and not os.path.exists(merged_path):
@@ -78,7 +83,10 @@ def load_peft_model(
 
 
 def generate(
-    model: PeftModel, tokenizer: PreTrainedTokenizer, messages: list
+    model: PeftModel,
+    tokenizer: PreTrainedTokenizer,
+    messages: list,
+    num_sequences: int = 5,
 ) -> list[str]:
     """Generate using the finetuned peft model. To do this, apply the chat
     template to the provided messages and then run the generation. Generates
@@ -87,6 +95,7 @@ def generate(
     :param model: finetuned peft model
     :param tokenizer: tokenizer for the finetuned model
     :param messages: messages in the chat format (as the prompt)
+    :param num_sequences: number of return sequences to generate per prompt
     :return: list of generated texts
     """
     input_ids = tokenizer.apply_chat_template(
@@ -98,6 +107,7 @@ def generate(
         tokenizer.convert_tokens_to_ids("<|eot_id|>"),
     ]
 
+    t0 = time()
     outputs = model.generate(
         input_ids,
         max_new_tokens=512,
@@ -106,13 +116,14 @@ def generate(
         temperature=0.6,
         top_p=0.9,
         renormalize_logits=True,
-        num_return_sequences=5,
+        num_return_sequences=num_sequences,
     )
+    time_per_sequence = (time() - t0) / num_sequences
     texts = [
         tokenizer.decode(o[input_ids.shape[-1] :], skip_special_tokens=True)
         for o in outputs
     ]
-    return texts
+    return texts, time_per_sequence
 
 
 def create_prompt(text: str = None) -> list[dict]:
@@ -152,7 +163,8 @@ def run_inference(args: ArgumentParser):
         peft_modelname=args.peft_model,
         merged_path=args.merged_path,
     )
-    texts = generate(model, tokenizer, messages)
+    texts, time_per_sequence = generate(model, tokenizer, messages)
+    logger.info(f"Average generation time per sequence: {time_per_sequence} seconds")
     for text in texts:
         logger.info(text + "\n\n #-#-#-#-#-#-#-#-#")
     return
