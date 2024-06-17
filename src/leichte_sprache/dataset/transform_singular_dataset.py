@@ -98,7 +98,7 @@ def run_vllm_generation(
     :param result_col_name: name of the db table column in which to write the results, defaults to "translated"
     :param batch_size: number of rows per batch, defaults to 20
     """
-    llm = LLM(model=model_id, max_model_len=1024, dtype=torch.float16)  # Create an LLM.
+    llm = LLM(model=model_id, max_model_len=4096, dtype=torch.float16)  # Create an LLM.
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     start_idx = 0
 
