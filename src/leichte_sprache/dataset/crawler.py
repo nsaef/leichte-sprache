@@ -628,14 +628,15 @@ def crawl_hurraki():
 
 
 def get_valid_parlament_editions(links: list[str]) -> list[str]:
-    """#todo _summary_
+    """Retrieve the URLs of Das Parlament editions with Leichte Sprache.
+    Remove the older editions without it.
 
-    :param links: _description_
-    :return: _description_
+    :param links: all links to Das Parlament-PDFs
+    :return: list of links with editions containing Leichte Sprache
     """
     valid_links = []
 
-    # remove old editions without Leichte Sprache
+    # remove old editions without Leichte Sprache (before 2014/27)
     rx = r"de\/epaper\/(\d{4})\/([\d_]+)\/"
     for link in links:
         match = re.search(rx, link)
@@ -648,11 +649,13 @@ def get_valid_parlament_editions(links: list[str]) -> list[str]:
     return valid_links
 
 
-def parse_parlament_edition(url: str):
-    """#todo_summary_
+def parse_parlament_edition(url: str) -> list[dict]:
+    """Parse a single edition of Das Parlament. Convert the Bytes Object
+    to an IO file object and pass it to the PDF content extraction.
+    Create a database-compatible result dict per article in the PDF.
 
-    :param url: _description_
-    :return: _description_
+    :param url: URL of the PDF
+    :return: list of dictionaries with the parsed data, one per article
     """
     all_results = []
     r = requests.get(url)
@@ -667,7 +670,11 @@ def parse_parlament_edition(url: str):
 
 
 def crawl_das_parlament():
-    """#todo _summary_"""
+    """Crawl the German parliament's e-paper Das Parlament, which has four pages of
+    Leichte Sprache in each edition. PDF parsing can be a bit unreliable, as the format
+    is bound to have changed occasionally since the first Leichte Sprache edition in 2014.
+    Hence only successfully parsed articles are ingested into the DB.
+    """
     all_links = get_links_per_page(
         "https://www.das-parlament.de/e-paper",
         selector="a.epaper__link[title~='PDF']",
@@ -679,6 +686,7 @@ def crawl_das_parlament():
     for link in tqdm(links):
         res = parse_parlament_edition(link)
         results.extend(res)
+
     results = [res for res in results if res.get("text")]
     insert_rows(table_name=CRAWLER_TABLE, rows=results)
     return

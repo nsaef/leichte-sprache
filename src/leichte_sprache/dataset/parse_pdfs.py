@@ -1,7 +1,4 @@
-import os
-
 from py_pdf_parser.loaders import load
-from tqdm import tqdm
 
 from leichte_sprache.constants import (
     ARTICLE_TEXT,
@@ -16,16 +13,32 @@ from leichte_sprache.utils.utils import parse_german_date
 
 def column_ordering_function(elements):
     """
-    The first entry in the key is False for columm 1, and True for column 2. The second
-    and third keys just give left to right, top to bottom.
+    Parse a PDF with a two-column layout. The x-coordinate of the divider delimits the column.
     """
-    return sorted(elements, key=lambda elem: (elem.x0 > 450, -elem.y0, elem.x0))
+    divider_position = 450
+    return sorted(
+        elements, key=lambda elem: (elem.x0 > divider_position, -elem.y0, elem.x0)
+    )
 
 
-def extract_pdf_das_parlament(f: bytes):
+def extract_pdf_das_parlament(f: bytes) -> list[dict]:
     """
-    #todo
-    :param fpath: path of a "Das Parlament" pdf file
+    Extract the content of PDFs of Das Parlament.
+
+    The parsing depends heavily on constant layout rules. The following assumptions are made:
+
+    - the content in Leichte Sprache is always precisely on the last four pages
+    - it is always presented in a two-column layout
+    - certain fonts are used continually for the same elements
+    - the header row is always at approximately the same height
+
+    With these assumptions in mind:
+    - the date is extracted from the first page; the format changed some time since 2014, and only one date format is supported
+    - all text elements are extracted from the last four pages in Leichte Sprache
+    - the articles in Leichte Sprache are parsed using the articel headings, subheadings and texts
+
+    :param f: Bytes object of the PDF file
+    :return: list with one result dictionary per article
     """
 
     # todo find date
