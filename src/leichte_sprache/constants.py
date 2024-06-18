@@ -1,13 +1,13 @@
+# # # # # Data Management # # # # #
+
 ### database ###
 CRAWLER_TABLE = "crawled_texts"
 DATASET_SINGULAR_TABLE = "dataset_singular"
 DATASET_TRANSLATED_TABLE = "dataset_singular_translated"
 
-
 ## dataset labels ###
 LS_LABEL = "leichte_sprache"
 SG_LABEL = "standard_german"
-
 
 ### column names ###
 LS_COLUMN = "leichte_sprache"
@@ -25,7 +25,6 @@ CHAT_COLUMN = "chat"
 PROMPTS_COLUMN = "prompts"
 ORIG_IDS_COLUMN = "orig_ids"
 
-
 ### Crawler arguments ###
 DLF_DICT = "dlf_dict"
 DLF_NEWS = "dlf_news"
@@ -33,8 +32,19 @@ NDR = "ndr"
 MDR_DICT = "mdr_dict"
 MDR_NEWS = "mdr_news"
 HURRAKI = "hurraki"
+PARLAMENT = "das_parlament"
 ALL_SOURCES = "all_sources"
 
+### PDF sections DAS PARLAMENT ###
+ARTICLE_TITLE = "article_title"
+ARTICLE_SUBTITLE = "article_subtitle"
+TITLE = "title"
+LOGO = "logo"
+SUBTITLE = "subtitle"
+ARTICLE_TEXT = "article_text"
+
+
+# # # # # Prompts and example data # # # # #
 
 ### prompts ###
 LS_SYSTEM_PROMPT_DICT = {
