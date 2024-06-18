@@ -119,6 +119,9 @@ def insert_rows(
     :param close_conn: close the connection after running the code. Default: True. May be set to False if an existing connection is passed to this function and continues to be used in the calling function.
 
     """
+    if not rows:
+        return
+
     # only use rows that share the same keys
     ref_keys = rows[0].keys()
     valid_rows = [r for r in rows if r.keys() == ref_keys]
@@ -165,3 +168,19 @@ def ingest_pandas(df: pd.DataFrame, table_name: str, if_exists: str = "append"):
     conn = get_connector()
     df.to_sql(table_name, conn, if_exists=if_exists, index=False)
     return
+
+
+def query_db(sql: str) -> list[dict]:
+    """Query the SQLite database. Return a list of dictionaries with one dict per row,
+    with the column names as dict keys and the cell values as values.
+
+    :param sql: SQL query
+    :return: list of dicts with result data
+    """
+    conn = get_connector()
+    conn.row_factory = dict_factory
+    cur = conn.cursor()
+    cur.execute(sql)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
