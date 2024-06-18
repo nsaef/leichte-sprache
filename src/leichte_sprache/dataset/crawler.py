@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from datetime import datetime
 from hashlib import md5
+import io
 import locale
 import re
 from time import sleep
@@ -30,10 +31,13 @@ from leichte_sprache.constants import (
     MDR_DICT,
     MDR_NEWS,
     HURRAKI,
+    PARLAMENT,
 )
+from leichte_sprache.dataset.parse_pdfs import extract_pdf_das_parlament
 from leichte_sprache.utils.db_utils import (
     insert_rows,
 )
+from leichte_sprache.utils.utils import parse_german_date
 
 
 def make_soup(
@@ -479,8 +483,9 @@ def parse_mdr_article(page_url: str) -> dict:
     title = soup.select_one("h1").text.strip()
     release_date_el = soup.select_one("p.webtime")
     if release_date_el:
-        release_date = datetime.strptime(
-            release_date_el.text.strip(), "%d. %B %Y, \n%H:%M Uhr"
+        release_date = parse_german_date(
+            date_string=release_date_el.text.strip(),
+            format_string="%d. %B %Y, \n%H:%M Uhr",
         )
     else:
         release_date = None
@@ -622,6 +627,63 @@ def crawl_hurraki():
     return
 
 
+def get_valid_parlament_editions(links: list[str]) -> list[str]:
+    """#todo _summary_
+
+    :param links: _description_
+    :return: _description_
+    """
+    valid_links = []
+
+    # remove old editions without Leichte Sprache
+    rx = r"de\/epaper\/(\d{4})\/([\d_]+)\/"
+    for link in links:
+        match = re.search(rx, link)
+        year, edition = int(match.group(1)), match.group(2)
+        if year < 2014:
+            continue
+        if year == 2014 and int(edition.split("_")[0]) < 27:
+            continue
+        valid_links.append(link)
+    return valid_links
+
+
+def parse_parlament_edition(url: str):
+    """#todo_summary_
+
+    :param url: _description_
+    :return: _description_
+    """
+    all_results = []
+    r = requests.get(url)
+    pdf_io = io.BytesIO(r.content)
+    data = extract_pdf_das_parlament(pdf_io)
+    for article in data:
+        res = make_result(
+            source="das_parlament", url=url, crawl_date=datetime.now(), **article
+        )
+        all_results.append(res)
+    return all_results
+
+
+def crawl_das_parlament():
+    """#todo _summary_"""
+    all_links = get_links_per_page(
+        "https://www.das-parlament.de/e-paper",
+        selector="a.epaper__link[title~='PDF']",
+        url_prefix="https://www.das-parlament.de",
+    )
+    links = get_valid_parlament_editions(all_links)
+    results = []
+
+    for link in tqdm(links):
+        res = parse_parlament_edition(link)
+        results.extend(res)
+    results = [res for res in results if res.get("text")]
+    insert_rows(table_name=CRAWLER_TABLE, rows=results)
+    return
+
+
 def run_crawler(
     dlf_dict: bool,
     dlf_news: bool,
@@ -629,6 +691,7 @@ def run_crawler(
     mdr_dict: bool,
     mdr_news: bool,
     hurraki: bool,
+    parlament: bool,
 ):
     """Crawl content in Leichte Sprache.
 
@@ -637,6 +700,8 @@ def run_crawler(
     :param ndr: Crawl the NDR news
     :param mdr_dict: Crawl the MDR dictionary
     :param mdr_news: Crawl the MDR news
+    :param hurraki: Crawl the Hurraki wiki in Leichte Sprache
+    :param parlament: Crawl "Das Parlament" (newspaper of the German Bundestag with four pages Leichte Sprache)
     """
     crawl_dlf(crawl_dict=dlf_dict, crawl_news=dlf_news)
     crawl_mdr(crawl_dict=mdr_dict, crawl_news=mdr_news)
@@ -644,6 +709,8 @@ def run_crawler(
         crawl_ndr()
     if hurraki:
         crawl_hurraki()
+    if parlament:
+        crawl_das_parlament()
     return
 
 
@@ -657,7 +724,7 @@ def parse_args() -> ArgumentParser:
     )
     parser.add_argument(
         "--sources",
-        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS, HURRAKI],
+        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS, HURRAKI, PARLAMENT],
         nargs="*",
         help="Select the sources to crawl. If this argument is not used, all sources will be crawled.",
     )
@@ -676,4 +743,5 @@ if __name__ == "__main__":
         mdr_dict=True if not args.sources or MDR_DICT in args.sources else False,
         mdr_news=True if not args.sources or MDR_NEWS in args.sources else False,
         hurraki=True if not args.sources or HURRAKI in args.sources else False,
+        parlament=True if not args.sources or PARLAMENT in args.sources else False,
     )

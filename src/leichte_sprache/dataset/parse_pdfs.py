@@ -1,7 +1,17 @@
 import os
 
-from py_pdf_parser.loaders import load_file
+from py_pdf_parser.loaders import load
 from tqdm import tqdm
+
+from leichte_sprache.constants import (
+    ARTICLE_TEXT,
+    ARTICLE_TITLE,
+    ARTICLE_SUBTITLE,
+    TITLE,
+    LOGO,
+    SUBTITLE,
+)
+from leichte_sprache.utils.utils import parse_german_date
 
 
 def column_ordering_function(elements):
@@ -12,18 +22,13 @@ def column_ordering_function(elements):
     return sorted(elements, key=lambda elem: (elem.x0 > 450, -elem.y0, elem.x0))
 
 
-def extract_pdf_das_parlament(fpath: str):
+def extract_pdf_das_parlament(f: bytes):
     """
     #todo
     :param fpath: path of a "Das Parlament" pdf file
     """
-    ARTICLE_TITLE = "article_title"
-    ARTICLE_SUBTITLE = "article_subtitle"
-    TITLE = "title"
-    LOGO = "logo"
-    SUBTITLE = "subtitle"
-    ARTICLE_TEXT = "article_text"
 
+    # todo find date
     FONT_MAPPING = {
         r"\w{6}\+TheMixOffice-Bold,16.0": ARTICLE_TITLE,
         r"\w{6}\+TheMixOffice-Bold,14.0": ARTICLE_SUBTITLE,
@@ -35,14 +40,21 @@ def extract_pdf_das_parlament(fpath: str):
         r"\w{6}\+TheMixOffice-Regular,26.9": SUBTITLE,
         r"\w{6}\+TheMixOffice-Regular,14.0": ARTICLE_TEXT,
         r"\w{6}\+TheMixOffice-Regular,16.0": ARTICLE_TITLE,
+        r"\w{6}\+FrutigerLTPro-Bold,10.0": "date",
     }
 
-    doc = load_file(
-        fpath,
+    doc = load(
+        f,
         font_mapping=FONT_MAPPING,
         font_mapping_is_regex=True,
         element_ordering=column_ordering_function,
     )
+    try:
+        date_str = doc.elements.filter_by_font("date")[0].text().split(",")[1].strip()
+        date = parse_german_date(date_string=date_str, format_string="%d. %B %Y")
+    except (IndexError, ValueError) as e:
+        date = None
+
     ls_pages = doc.pages[-4:]
     all_elements = [ele for page in ls_pages for ele in page.elements]
 
@@ -66,6 +78,7 @@ def extract_pdf_das_parlament(fpath: str):
             article = {
                 "title": text,
                 "text": "",
+                "orig_date": date,
             }
         elif font == ARTICLE_TEXT:
             # reached the end of the content
@@ -98,19 +111,3 @@ def extract_pdf_das_parlament(fpath: str):
     for article in all_articles:
         article["text"] = article["text"].replace("\t", " ")
     return all_articles
-
-
-if __name__ == "__main__":
-    dirname = "/home/nasrin/workspace/leichte-sprache/data/pdf_examples"
-    filenames = os.listdir(dirname)
-
-    articles = []
-    for filename in tqdm(filenames):
-        fpath = f"{dirname}/{filename}"
-        res = extract_pdf_das_parlament(fpath)
-        articles.extend(res)
-
-    for article in articles:
-        print(article.get("title") + "\n")
-        print(article.get("text") + "\n\n - - - - - \n\n")
-    print("hello world")
