@@ -4,7 +4,6 @@ from sqlite3 import OperationalError, IntegrityError
 from leichte_sprache.utils.db_utils import (
     create_column_dict,
     create_table,
-    get_connector,
     insert_rows,
 )
 

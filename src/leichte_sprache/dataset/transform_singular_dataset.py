@@ -1,9 +1,8 @@
 import datasets
 import pandas as pd
 import torch
-from transformers import AutoTokenizer
 from tqdm import tqdm
-from vllm import LLM
+from vllm import LLM, SamplingParams
 
 from leichte_sprache.constants import (
     DATASET_SINGULAR_TABLE,
@@ -98,15 +97,21 @@ def run_vllm_generation(
     :param result_col_name: name of the db table column in which to write the results, defaults to "translated"
     :param batch_size: number of rows per batch, defaults to 20
     """
-    llm = LLM(model=model_id, max_model_len=1024, dtype=torch.float16)  # Create an LLM.
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    llm = LLM(model=model_id, max_model_len=4096, dtype=torch.float16)  # Create an LLM.
+    sampling_params = SamplingParams(
+        temperature=0.6,
+        top_p=0.9,
+        skip_special_tokens=True,
+        top_k=50,
+        n=1,
+    )
     start_idx = 0
 
     with tqdm(total=len(dataset)) as pbar:
         pbar.set_description("Translating Leichte Sprache to complicated German")
         while start_idx < len(dataset):
             prompts = dataset[prompt_col_name][start_idx : start_idx + batch_size]
-            outputs = generate_vllm(prompts, llm, tokenizer, use_tqdm=False)
+            outputs = generate_vllm(prompts, llm, sampling_params, use_tqdm=False)
             texts = [o.outputs[0].text for o in outputs]
             subset = dataset[start_idx : start_idx + batch_size]
             subset[result_col_name] = texts
