@@ -228,6 +228,17 @@ def chunk_text(
     return chunks
 
 
+def classifier_inference(model, encoded_input, labels) -> tuple:
+    # todo docstring
+    try:
+        output = model(**encoded_input, labels=labels)
+        predicted_class_id = output.logits.argmax().item()
+        logits = output.logits
+    except RuntimeError:
+        predicted_class_id, logits = None, None
+    return predicted_class_id, logits
+
+
 def run_classifier(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str):
     # todo docs, refactor
     labels = torch.tensor([1]).unsqueeze(0)
@@ -235,23 +246,22 @@ def run_classifier(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text:
     n_tokens = len(encoded_input["input_ids"][0])
 
     if n_tokens > tokenizer.model_max_length:
-        chunks = chunk_text(tokenizer, text, tokenizer.model_max_length)
+        chunks = chunk_text(tokenizer, text, tokenizer.model_max_length * 0.9)
         pred_classes = []
         all_logits = []
 
         for chunk in chunks:
             encoded_chunk = tokenizer(chunk, return_tensors="pt")
-            output = model(**encoded_chunk, labels=labels)
-            predicted_class_id = output.logits.argmax().item()
-            pred_classes.append(predicted_class_id)
-            all_logits.append(output.logits)
+            predicted_class_id, logits = classifier_inference(
+                model, encoded_chunk, labels
+            )
+            if predicted_class_id is not None:
+                pred_classes.append(predicted_class_id)
+                all_logits.append(logits)
         predicted_class_id = round(mean(pred_classes))
         logits = torch.mean(torch.stack(all_logits), dim=0)
-
     else:
-        output = model(**encoded_input, labels=labels)
-        predicted_class_id = output.logits.argmax().item()
-        logits = output.logits
+        predicted_class_id, logits = classifier_inference(model, encoded_input, labels)
     return predicted_class_id, logits
 
 
