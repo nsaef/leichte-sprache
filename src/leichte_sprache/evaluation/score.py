@@ -167,6 +167,9 @@ def analyse_text_statistics(text: str) -> dict:
 
 
 def score_classification_set():
+    """Calculate scores on the classification dataset.
+    # todo: add classifier score?
+    """
     # get the dataset
     dataset = load_dataset(os.getenv("HF_CLASSIFICATION_DATASET_NAME"), split="train")
 
@@ -206,12 +209,19 @@ def run_rule_based_checks():
 
 def chunk_text(
     tokenizer: PreTrainedTokenizer, text: str, max_length: int, separator: str = "\n"
-):
-    # todo docs, test
-    # doesn't support the case where a single paragraph is longer than the given limit
-    # todo: concat the tensors instead of the strings
+) -> list[str]:
+    """Chunk text into smaller batches that can be fit into the classifier.
+    Doesn't support the case where a single paragraph is longer than the given limit.
+
+    :param tokenizer: tokenizer, to calculate the text length in tokens
+    :param text: text to be classified
+    :param max_length: maximum input length of the model
+    :param separator: string at which to split the text into chunks, defaults to "\n"
+    :return: list of text chunks that can be fit into the model
+    """
     chunks = []
     parts = text.split(separator)
+    # todo: concat the tensors instead of the strings
     partial = ""
     len_current_chunk = 0
     for part in parts:
@@ -228,8 +238,15 @@ def chunk_text(
     return chunks
 
 
-def classifier_inference(model, encoded_input, labels) -> tuple:
-    # todo docstring
+def classifier_inference(model: PreTrainedModel, encoded_input, labels) -> tuple:
+    """Run inference with the classifier.
+    # todo: type hints
+
+    :param model: classification model
+    :param encoded_input: input encoded as pytorch tensor
+    :param labels: class labels as tensor
+    :return: tuple predicted_class_id, logits
+    """
     try:
         output = model(**encoded_input, labels=labels)
         predicted_class_id = output.logits.argmax().item()
@@ -239,8 +256,19 @@ def classifier_inference(model, encoded_input, labels) -> tuple:
     return predicted_class_id, logits
 
 
-def run_classifier(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str):
-    # todo docs, refactor
+def run_classifier(
+    model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str
+) -> tuple:
+    """Run the Leichte Sprache classifier. If the text input is too long for the model,
+    it's split into chunks that can fit in the model and each chunk is classified
+    separately. The predicted label and the logits are then calculated as a mean over all
+    chunk results.
+
+    :param model: classification model
+    :param tokenizer: tokenizer of the classification model
+    :param text: input text
+    :return: tuple: predicted_class_id, logits
+    """
     labels = torch.tensor([1]).unsqueeze(0)
     encoded_input = tokenizer(text, return_tensors="pt")
     n_tokens = len(encoded_input["input_ids"][0])
