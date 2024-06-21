@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import os
 
 import pandas as pd
 import torch
@@ -38,6 +39,7 @@ def parse_args() -> ArgumentParser:
     parser.add_argument(
         "--classification_model",
         help="Name or path of a classifier for Leichte Sprache",
+        required=True,
     )
     args = parser.parse_args()
     return args
@@ -194,6 +196,8 @@ def generate_and_evaluate(args):
     )
     gen_df = calculate_metrics(model, tokenizer, texts, list(df.text))
     print_metrics(gen_df)
+    if os.path.exists(args.model_name):
+        gen_df.to_csv(f"{args.model_name}/metrics.csv")
     return
 
 

@@ -73,10 +73,18 @@ Create a YAML file containing the training parameters. For an example, see `src/
 ##### Run the training
 Run `python src/leichte_sprache/training/train.py PATH_TO_CONFIG.YAML` to finetune a model using PEFT. Adapt the parameters to your needs and your machine's capabilities.
 
-##### Test the model
-Run `python src/leichte_sprache/evaluation/run_model.py --base_model BASE_MODEL_NAME --peft_model CHECKPOINT_PATH` in order to generate a handful of example texts with the finetuned model.
+##### Quantize the model
+Run `python src/leichte_sprache/training/quantize_model.py --base_model BASE_MODEL_NAME --peft_model CHECKPOINT_PATH --merged_path NEW_PATH_MERGED --quantized_path NEW_PATH_QUANTIZED` to merge the adapter into the model and store the merged model on the disk. The merged model is then quantized to 4 bit using AutoAWQ and stored under the given path.
 
-Note: this is still rather rudimentary and will be extended in the future.
+##### Test the model
+Run `python src/leichte_sprache/evaluation/run_model.py --model_name QUANTIZED_MODEL_PATH --classification_model CHECKPOINT_PATH` in order to generate a five sampels for a set of ten example texts with the finetuned model. Use the quantized model for improved performance. 
+
+This runs two types of metrics:
+
+- Leichte Sprache classification: using the LS classifier (see below), score all generated texts
+- Readability metrics: Flesch reading ease and Wiener Sachtextformel 4
+
+Metrics are logged to the console and stored as a CSV file in the model directory, if `--model_name` is a local directory. The CSV file is overwritten after each run with the same model!
 
 ### Data Structures
 #### DB Structure
