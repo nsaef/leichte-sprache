@@ -44,14 +44,13 @@ def parse_args() -> ArgumentParser:
 
 
 def create_prompts(texts: list[str]) -> list[dict]:
-    """Create a prompt in the chat format. If no text input is given,
-    use a default example text. In order to evaluate a model finetuned
-    to generate Leichte Sprache, use text in standard German as input.
-    The system and user prompt used to train the model are used for this
-    generation prompt.
+    """Create prompts in the chat format from a list of texts.
+    In order to evaluate a model finetuned to generate Leichte Sprache,
+    use text in standard German as input. The system and user prompt
+    used to train the model are used for the generation prompt.
 
-    :param text: text that should be transformed to Leichte Sprache. Default: None. In that case, retrieves an example text.
-    :return: prompt in the chat format: [{"role": "user", "content": prompt+text}]
+    :param text: list of texts that should be transformed to Leichte Sprache
+    :return: list of prompts in the chat format: [{"role": "user", "content": prompt+text}]
     """
     messages = []
 
@@ -67,11 +66,13 @@ def create_prompts(texts: list[str]) -> list[dict]:
     return messages
 
 
-def run_inference_vllm(args: ArgumentParser, prompts: list[str]):
-    """Run inference using VLLM. Currently (vllm==0.4.3) doesn't work properly with peft.
-    Check again in a couple of releases.
+def run_inference_vllm(args: ArgumentParser, prompts: list[str]) -> list[str]:
+    """Run inference using vLLM. Generates five examples per prompt.
+
+    :param args: arguments including modelname
+    :param prompts: list of prompts in the chat format
+    :return: list of generated texts (five per prompt)
     """
-    # todo: documentation
     llm = LLM(
         model=args.model_name,
         max_model_len=2048,
@@ -93,7 +94,10 @@ def run_inference_vllm(args: ArgumentParser, prompts: list[str]):
 
 
 def print_metrics(df: pd.DataFrame):
-    # todo docstring
+    """Analyse the calculated metrics and log summaries to the console.
+
+    :param df: dataframe containing metrics from the classifier and readability scores
+    """
     share_sg = len(df[df.predicted_class == 0]) / len(df.dropna())
     logger.info(df)
     logger.info(f"Mean predicted class: {df.dropna().predicted_class.mean()}")
@@ -136,6 +140,16 @@ def calculate_metrics(
     texts: list[str],
     orig_texts: list[str],
 ) -> pd.DataFrame:
+    """Calculate metrics for the generated texts. Currently implemented:
+    - Leichte Spreche classifier (predicted label, logits)
+    - Readability metrics: Flesch reading ease, Wiener Sachtextformel
+
+    :param model: classification model
+    :param tokenizer: tokenizer of the classification model
+    :param texts: list of generated texts in Leichte Sprache
+    :param orig_texts: original texts in standard German
+    :return: dataframe with the calculated metrics
+    """
     orig_texts_padded = [item for item in orig_texts for _ in range(5)]
     scores = {
         "text_gen": texts,
@@ -162,7 +176,13 @@ def calculate_metrics(
 
 
 def generate_and_evaluate(args):
-    # todo docs
+    """Generate Leichte Sprache with a finetuned model based on example data.
+    For each row in the example dataset, five samples are generated.
+    Calculate metrics on the generated texts using the Leichte Sprache classifier
+    and readability metrics and log the results to the console.
+
+    :param args: CLI arguments
+    """
     df = pd.read_csv("src/leichte_sprache/dataset/files/test_data_sg.csv")
     prompts = create_prompts(list(df.text))
     texts = run_inference_vllm(args, prompts)
