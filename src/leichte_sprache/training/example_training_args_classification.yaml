@@ -1,0 +1,48 @@
+# ML Flow Config
+report_to: "mlflow"
+run_name: "RUN_NAME"
+
+# model params
+model_name_or_path: "FacebookAI/xlm-roberta-large"
+output_dir: "PATH/TO/DIR"
+overwrite_output_dir: True
+max_seq_length: 1024
+# push_to_hub: 
+# hub_private_repo: true
+# hub_strategy: "every_save"
+
+# dataset
+dataset_name: "CLASSIFICATION_DATASET_NAME"
+shuffle_train_dataset: True
+#metric_name: "accuracy"
+text_column_names: "text"
+label_column_name: "label"
+
+# general params
+do_train: True
+seed: 100
+num_train_epochs: 3
+logging_steps: 2
+log_level: "info"
+logging_strategy: "steps"
+eval_strategy: "steps"
+save_strategy: "steps"
+eval_steps: 10
+save_steps: 10
+
+# training params
+#packing: True
+learning_rate: 2e-5
+lr_scheduler_type: "cosine"
+weight_decay: 0.0001
+warmup_ratio: 0.0
+max_grad_norm: 1.0
+per_device_train_batch_size: 30
+per_device_eval_batch_size: 30
+gradient_accumulation_steps: 8
+gradient_checkpointing: True
+#use_reentrant: True
+
+# Training Optimization
+bf16: True
+

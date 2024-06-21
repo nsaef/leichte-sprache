@@ -22,7 +22,7 @@ logger = get_logger()
 
 
 def parse_args() -> ArgumentParser:
-    """Parse the command line arguments to select the sources to crawl.
+    """Parse the command line arguments to run and evaluate a finetuned model.
 
     :return: ArgumentParser with command line arguments.
     """
