@@ -6,6 +6,8 @@ import evaluate
 from lingua import Language, LanguageDetectorBuilder
 import spacy
 import textstat
+import torch
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 
 def calculate_readability_scores(text: str) -> dict:
@@ -200,6 +202,15 @@ def run_rule_based_checks():
     # prefer numbers (1) over number-words (one)
     # avoid special characters like " % ... ; & () $
     pass
+
+
+def run_classifier(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str):
+    # todo docs
+    encoded_input = tokenizer(text, return_tensors="pt")
+    labels = torch.tensor([1]).unsqueeze(0)
+    output = model(**encoded_input, labels=labels)
+    predicted_class_id = output.logits.argmax().item()
+    return predicted_class_id, output.logits
 
 
 if __name__ == "__main__":
