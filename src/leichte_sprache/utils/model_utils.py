@@ -5,7 +5,7 @@ from vllm import LLM, SamplingParams, RequestOutput
 def generate_vllm(
     messages: list,
     llm: LLM,
-    n_sequences: int = 1,
+    sampling_params: SamplingParams,
     use_tqdm: bool = True,
 ) -> list[RequestOutput]:
     """Generate with a transformers-compatible model using VLLM. Messages are
@@ -13,7 +13,7 @@ def generate_vllm(
 
     :param messages: list of prompts in the chat messages format
     :param llm: VLLM LLM instance
-    :param n_sequences: number of return sequences per prompt
+    :param sampling_params: sampling parameters
     :param use_tqdm: show a tqdm progress bar. Default: True
     :return: list of VLLM RequestOutput objects
     """
@@ -22,15 +22,8 @@ def generate_vllm(
         tokenizer.eos_token_id,
         tokenizer.convert_tokens_to_ids("<|eot_id|>"),
     ]
-    sampling_params = SamplingParams(
-        max_tokens=llm.llm_engine.model_config.max_model_len,
-        stop_token_ids=terminators,
-        temperature=0.6,
-        top_p=0.9,
-        skip_special_tokens=True,
-        top_k=50,
-        n=n_sequences,
-    )
+    sampling_params.stop_token_ids = terminators
+    sampling_params.max_tokens = (llm.llm_engine.model_config.max_model_len,)
     prompts = [
         tokenizer.apply_chat_template(
             message, add_generation_prompt=True, tokenize=False
