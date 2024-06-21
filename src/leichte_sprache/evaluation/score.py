@@ -204,13 +204,55 @@ def run_rule_based_checks():
     pass
 
 
+def chunk_text(
+    tokenizer: PreTrainedTokenizer, text: str, max_length: int, separator: str = "\n"
+):
+    # todo docs, test
+    # doesn't support the case where a single paragraph is longer than the given limit
+    # todo: concat the tensors instead of the strings
+    chunks = []
+    parts = text.split(separator)
+    partial = ""
+    len_current_chunk = 0
+    for part in parts:
+        encoded = tokenizer(part, return_tensors="pt")["input_ids"][0]
+        if len(encoded) + len_current_chunk < max_length:
+            partial += part
+            len_current_chunk += len(encoded)
+        else:
+            chunks.append(partial)
+            partial = part
+            len_current_chunk = len(encoded)
+    if partial:
+        chunks.append(partial)
+    return chunks
+
+
 def run_classifier(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str):
-    # todo docs
-    encoded_input = tokenizer(text, return_tensors="pt")
+    # todo docs, refactor
     labels = torch.tensor([1]).unsqueeze(0)
-    output = model(**encoded_input, labels=labels)
-    predicted_class_id = output.logits.argmax().item()
-    return predicted_class_id, output.logits
+    encoded_input = tokenizer(text, return_tensors="pt")
+    n_tokens = len(encoded_input["input_ids"][0])
+
+    if n_tokens > tokenizer.model_max_length:
+        chunks = chunk_text(tokenizer, text, tokenizer.model_max_length)
+        pred_classes = []
+        all_logits = []
+
+        for chunk in chunks:
+            encoded_chunk = tokenizer(chunk, return_tensors="pt")
+            output = model(**encoded_chunk, labels=labels)
+            predicted_class_id = output.logits.argmax().item()
+            pred_classes.append(predicted_class_id)
+            all_logits.append(output.logits)
+        predicted_class_id = round(mean(pred_classes))
+        logits = torch.mean(torch.stack(all_logits), dim=0)
+
+    else:
+        output = model(**encoded_input, labels=labels)
+        predicted_class_id = output.logits.argmax().item()
+        logits = output.logits
+    return predicted_class_id, logits
 
 
 if __name__ == "__main__":
