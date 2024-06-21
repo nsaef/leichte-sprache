@@ -12,6 +12,10 @@ logger = get_logger()
 
 
 def evaluate_classifier():
+    """Evaluate the classifier using the evaluation set that was excluded
+    from the training. Calculate accuracy, f1, precision and recall, log them
+    to the console and save the result as a CSV file in the model directory.
+    """
     metric = evaluate.combine(["accuracy", "f1", "precision", "recall"])
     dataset = load_dataset(
         os.getenv("HF_CLASSIFICATION_DATASET_NAME"),

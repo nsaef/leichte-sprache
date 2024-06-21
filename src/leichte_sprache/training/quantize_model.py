@@ -52,6 +52,8 @@ def merge_peft_model(
     base_modelname: str, peft_modelname: str, merged_path: str
 ) -> tuple[PeftModel, PreTrainedTokenizer]:
     """Load a model trained with parameter-efficient finetuning.
+    Save the emrged model to the disk if the merged path doesn't
+    exist yet.
 
     :param base_modelname: name or path of the full/base model
     :param peft_modelname: name or path of the adapter
@@ -78,6 +80,11 @@ def merge_peft_model(
 
 
 def run_quantization(model_path: str, quant_path: str):
+    """Run AWQ quantization to 4bit and save the quantized model to a given path.
+
+    :param model_path: path of the merged model (not only the adapter!)
+    :param quant_path: output path of the quantized model
+    """
     quant_config = {
         "zero_point": True,
         "q_group_size": 128,
