@@ -1,7 +1,6 @@
 import datasets
 import pandas as pd
 import torch
-from transformers import AutoTokenizer
 from tqdm import tqdm
 from vllm import LLM
 
@@ -99,14 +98,13 @@ def run_vllm_generation(
     :param batch_size: number of rows per batch, defaults to 20
     """
     llm = LLM(model=model_id, max_model_len=4096, dtype=torch.float16)  # Create an LLM.
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
     start_idx = 0
 
     with tqdm(total=len(dataset)) as pbar:
         pbar.set_description("Translating Leichte Sprache to complicated German")
         while start_idx < len(dataset):
             prompts = dataset[prompt_col_name][start_idx : start_idx + batch_size]
-            outputs = generate_vllm(prompts, llm, tokenizer, use_tqdm=False)
+            outputs = generate_vllm(prompts, llm, use_tqdm=False)
             texts = [o.outputs[0].text for o in outputs]
             subset = dataset[start_idx : start_idx + batch_size]
             subset[result_col_name] = texts

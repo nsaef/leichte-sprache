@@ -1,28 +1,23 @@
-from transformers import (
-    PreTrainedTokenizer,
-)
 import tiktoken
 from vllm import LLM, SamplingParams, RequestOutput
-from vllm.lora.request import LoRARequest
 
 
 def generate_vllm(
     messages: list,
     llm: LLM,
-    tokenizer: PreTrainedTokenizer,
+    n_sequences: int = 1,
     use_tqdm: bool = True,
-    lora_request: LoRARequest = None,
 ) -> list[RequestOutput]:
     """Generate with a transformers-compatible model using VLLM. Messages are
     converted to plain text via the chat template and then passed to the model.
 
     :param messages: list of prompts in the chat messages format
     :param llm: VLLM LLM instance
-    :param tokenizer: the model's tokenizer (to apply the correct chat template)
+    :param n_sequences: number of return sequences per prompt
     :param use_tqdm: show a tqdm progress bar. Default: True
-    :param lora_request: Optional VLLM LoRARequest instance. Default: None
     :return: list of VLLM RequestOutput objects
     """
+    tokenizer = llm.llm_engine.tokenizer.tokenizer
     terminators = [
         tokenizer.eos_token_id,
         tokenizer.convert_tokens_to_ids("<|eot_id|>"),
@@ -34,6 +29,7 @@ def generate_vllm(
         top_p=0.9,
         skip_special_tokens=True,
         top_k=50,
+        n=n_sequences,
     )
     prompts = [
         tokenizer.apply_chat_template(
@@ -45,7 +41,6 @@ def generate_vllm(
         prompts,
         sampling_params=sampling_params,
         use_tqdm=use_tqdm,
-        lora_request=lora_request,
     )
     return outputs
 
