@@ -2,10 +2,12 @@ from argparse import ArgumentParser
 import os
 from time import time
 
-import torch
+import pandas as pd
 from peft import PeftModel
+import torch
 from transformers import (
     AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     PreTrainedTokenizer,
     BitsAndBytesConfig,
@@ -17,6 +19,10 @@ from leichte_sprache.constants import (
     TEST_ARTICLE,
     LS_USER_PROMPT_TEXT,
     LS_SYSTEM_PROMPT_DICT,
+)
+from leichte_sprache.evaluation.score import (
+    calculate_readability_scores,
+    run_classifier,
 )
 from leichte_sprache.utils.model_utils import generate_vllm
 from leichte_sprache.utils.utils import get_logger
@@ -46,6 +52,10 @@ def parse_args() -> ArgumentParser:
         help="Name or path of the finetuned model weights",
     )
     parser.add_argument(
+        "--classification_model",
+        help="Name or path of a classifier for Leichte Sprache",
+    )
+    parser.add_argument(
         "--merged_path",
         help="Optional path to store the merged model weights.",
     )
@@ -72,9 +82,10 @@ def load_peft_model(
     )
     base_model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
     model = PeftModel.from_pretrained(base_model, peft_modelname)
-    model.merge_and_unload()
+    model = model.merge_and_unload()
     if merged_path and not os.path.exists(merged_path):
         model.save_pretrained(merged_path)
+        tokenizer.save_pretrained(merged_path)
     elif merged_path:
         logger.warning(
             f"Path {merged_path} already exists! Skipping saving the merged model weights."
@@ -87,7 +98,7 @@ def generate(
     tokenizer: PreTrainedTokenizer,
     messages: list,
     num_sequences: int = 5,
-) -> list[str]:
+) -> tuple[list[str], float]:
     """Generate using the finetuned peft model. To do this, apply the chat
     template to the provided messages and then run the generation. Generates
     five sequences for the given prompt. Returns a list of generated texts.
@@ -139,14 +150,24 @@ def create_prompt(text: str = None) -> list[dict]:
     if not text:
         text = TEST_ARTICLE
 
-    messages = [
+    messages = []
+    message = [
         LS_SYSTEM_PROMPT_DICT,
         {
             "role": "user",
             "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text),
         },
     ]
+    messages.append(message)
     return messages
+
+
+def calculate_scores(texts: list[str]) -> pd.DataFrame:
+    # todo docs
+    scores = [calculate_readability_scores(text) for text in texts]
+    df = pd.DataFrame(scores)
+    logger.info(df.describe().loc["mean"])
+    return df
 
 
 def run_inference(args: ArgumentParser):
@@ -164,10 +185,10 @@ def run_inference(args: ArgumentParser):
         merged_path=args.merged_path,
     )
     texts, time_per_sequence = generate(model, tokenizer, messages)
+    logger.info(f"Base model: {args.base_model}\nAdapter: {args.peft_model}")
     logger.info(f"Average generation time per sequence: {time_per_sequence} seconds")
-    for text in texts:
-        logger.info(text + "\n\n #-#-#-#-#-#-#-#-#")
-    return
+    df = calculate_scores(texts)
+    return texts
 
 
 def run_inference_vllm_do_not_use(args: ArgumentParser):
@@ -177,31 +198,43 @@ def run_inference_vllm_do_not_use(args: ArgumentParser):
     # todo: fix when vllm has better peft support. Do not use until then.
 
     messages = create_prompt()
-    # model, tokenizer = load_peft_model(
-    #     base_modelname=args.base_model,
-    #     peft_modelname=args.peft_model,
-    #     merged_path=args.merged_path,
-    # )
+
     llm = LLM(
-        model=args.base_model,
-        # qlora_adapter_name_or_path=args.peft_model,
+        model=args.merged_path,
         max_model_len=1024,
-        enable_lora=True,
-        quantization="bitsandbytes",
-        load_format="bitsandbytes",
-    )
-    lora_request = LoRARequest(
-        "ls_adapter", lora_int_id=1, lora_local_path=args.peft_model
+        # qlora_adapter_name_or_path=args.peft_model,
+        # enable_lora=True,
+        # quantization="bitsandbytes",
+        # load_format="bitsandbytes",
     )
     tokenizer = AutoTokenizer.from_pretrained(args.peft_model)
     outputs = generate_vllm(
-        messages=[messages], llm=llm, tokenizer=tokenizer, lora_request=lora_request
+        messages=messages, llm=llm, tokenizer=tokenizer, lora_request=None
     )
-    print(outputs)
-    return
+    texts = [o.outputs[0].text for o in outputs]
+    print(texts)
+    return texts
+
+
+def generate_and_evaluate(args):
+    # todo docs
+    # texts = run_inference(args)
+    texts = run_inference_vllm_do_not_use(args)
+    torch.cuda.empty_cache()
+
+    tokenizer = AutoTokenizer.from_pretrained(args.classification_model)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        args.classification_model
+    )
+    for text in texts:
+        logger.info("\n\n #-#-#-#-#-#-#-#-#")
+        predicted_class_id, logits = run_classifier(model, tokenizer, text)
+        logger.info(
+            f"Predicted class ID: {predicted_class_id} (0=SG, 1=LS); Logits: {logits}"
+        )
+        logger.info(text)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run_inference(args)
-    # run_inference_vllm_do_not_use(args)
+    generate_and_evaluate(args)
