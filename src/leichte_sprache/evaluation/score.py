@@ -1,4 +1,5 @@
 import os
+import re
 from statistics import mean
 
 from datasets import load_dataset
@@ -290,7 +291,16 @@ def run_classifier(
         logits = torch.mean(torch.stack(all_logits), dim=0)
     else:
         predicted_class_id, logits = classifier_inference(model, encoded_input, labels)
-    return predicted_class_id, logits
+    return {"class_id": predicted_class_id, "logits": logits}
+
+
+def calc_share_newlines(text: str) -> float:
+    rx = r"\n+"
+    subst = "\\n"
+    normalized = re.sub(rx, subst, text)
+    n_newlines = normalized.count("\n")
+    share_newlines = n_newlines / len(text) * 100
+    return {"share_newlines": share_newlines}
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from leichte_sprache.constants import (
 from leichte_sprache.evaluation.score import (
     calculate_readability_scores,
     run_classifier,
+    calc_share_newlines,
 )
 from leichte_sprache.utils.model_utils import generate_vllm
 from leichte_sprache.utils.utils import get_logger
@@ -161,16 +162,19 @@ def calculate_metrics(
         "logits_ls": [],
         "flesch_reading_ease": [],
         "wiener_sachtextformel": [],
+        "share_newlines": [],
     }
 
     for text in texts:
-        predicted_class_id, logits = run_classifier(model, tokenizer, text)
+        classifier_res = run_classifier(model, tokenizer, text)
         readability = calculate_readability_scores(text)
-        scores["predicted_class"].append(predicted_class_id)
-        scores["logits_sg"].append(logits[0][0].item())
-        scores["logits_ls"].append(logits[0][1].item())
+        share_newlines = calc_share_newlines(text)
+        scores["predicted_class"].append(classifier_res.get("class_id"))
+        scores["logits_sg"].append(classifier_res.get("logits")[0][0].item())
+        scores["logits_ls"].append(classifier_res.get("logits")[0][1].item())
         scores["flesch_reading_ease"].append(readability["flesch_reading_ease"])
         scores["wiener_sachtextformel"].append(readability["wiener_sachtextformel_4"])
+        scores["share_newlines"].append(share_newlines.get("share_newlines"))
 
     gen_df = pd.DataFrame(scores)
     gen_df["diff_logits"] = abs(gen_df.logits_sg - gen_df.logits_ls)
