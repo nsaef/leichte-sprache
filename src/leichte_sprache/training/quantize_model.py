@@ -44,12 +44,17 @@ def parse_args() -> ArgumentParser:
         "--quantized_path",
         help="Optional path to store the merged model weights.",
     )
+    parser.add_argument(
+        "--no_pad_tokenizer",
+        action="store_false",
+        dest="pad_tokenizer",
+    )
     args = parser.parse_args()
     return args
 
 
 def merge_peft_model(
-    base_modelname: str, peft_modelname: str, merged_path: str
+    base_modelname: str, peft_modelname: str, merged_path: str, pad_tokenizer: bool
 ) -> tuple[PeftModel, PreTrainedTokenizer]:
     """Load a model trained with parameter-efficient finetuning.
     Save the emrged model to the disk if the merged path doesn't
@@ -59,6 +64,9 @@ def merge_peft_model(
     :param peft_modelname: name or path of the adapter
     :param merged_path: path to store the merged model
     """
+    logger.info(
+        f"Merging adapter into base model and saving model.\nBase model: {base_modelname}\nAdapter: {peft_modelname}\nMerged model path: {merged_path}"
+    )
     tokenizer = AutoTokenizer.from_pretrained(peft_modelname)
     base_model = AutoModelForCausalLM.from_pretrained(
         base_modelname,
@@ -66,7 +74,10 @@ def merge_peft_model(
         device_map={"": 0},
         attn_implementation="flash_attention_2",
     )
-    base_model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+    if pad_tokenizer:
+        base_model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+    else:
+        base_model.resize_token_embeddings(len(tokenizer))
     model = PeftModel.from_pretrained(base_model, peft_modelname)
     model = model.merge_and_unload()
     if merged_path and not os.path.exists(merged_path):
@@ -85,6 +96,9 @@ def run_quantization(model_path: str, quant_path: str):
     :param model_path: path of the merged model (not only the adapter!)
     :param quant_path: output path of the quantized model
     """
+    logger.info(
+        f"Running quantization.\nInput model: {model_path}\nOutput model: {quant_path}"
+    )
     quant_config = {
         "zero_point": True,
         "q_group_size": 128,
@@ -118,6 +132,7 @@ def quantize_model(args):
         base_modelname=args.base_model,
         peft_modelname=args.peft_model,
         merged_path=args.merged_path,
+        pad_tokenizer=args.pad_tokenizer,
     )
     run_quantization(args.merged_path, args.quantized_path)
 

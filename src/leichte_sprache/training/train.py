@@ -12,14 +12,11 @@ from transformers import (
 )
 from trl import SFTTrainer
 
-from leichte_sprache.constants import (
-    LS_SYSTEM_PROMPT_DICT,
-    LS_USER_PROMPT_TEXT,
-    LS_COLUMN,
-    SG_COLUMN,
-    CHAT_COLUMN,
+from leichte_sprache.constants import CHAT_COLUMN
+from leichte_sprache.utils.training_utils import (
+    create_and_prepare_model,
+    transform_to_chat,
 )
-from leichte_sprache.utils.training_utils import create_and_prepare_model
 
 
 # Define and parse arguments.
@@ -121,37 +118,6 @@ class DataTrainingArguments:
         default="train,test",
         metadata={"help": "Comma separate list of the splits to use from the dataset."},
     )
-
-
-def transform_to_chat(
-    row,
-    tokenizer: PreTrainedTokenizer,
-    col_user: str = SG_COLUMN,
-    col_assistant: str = LS_COLUMN,
-) -> dict:
-    """Takes a row of a dataset as input and uses its data to create chat messages.
-
-    :param row: dataset row
-    :param tokenizer: tokenizer with the desired chat template
-    :param col_user: column containing the texts for the role "user", defaults to "standard_german"
-    :param col_assistant: column containing the texts for the role "assistant", defaults to "leichte_sprache"
-    :return: dictionary -> {"chat": [{"role": "user", "content": "foo"},{"role": "assistant", "content": "bar"}]}
-    """
-    text_assistant = row[col_assistant]
-    text_user = row[col_user]
-    messages = [
-        LS_SYSTEM_PROMPT_DICT,
-        {
-            "role": "user",
-            "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text_user),
-        },
-        {"role": "assistant", "content": text_assistant},
-    ]
-    chat = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=False
-    )
-
-    return {CHAT_COLUMN: chat}
 
 
 def prepare_data(dataset_path: str, tokenizer: PreTrainedTokenizer) -> Dataset:

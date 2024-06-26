@@ -184,3 +184,12 @@ def query_db(sql: str) -> list[dict]:
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+def drop_table(table_name: str):
+    # todo docstring
+    conn = get_connector()
+    conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+    conn.commit()
+    conn.close()
+    return
