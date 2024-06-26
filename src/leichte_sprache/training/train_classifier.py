@@ -754,7 +754,6 @@ def main():
                     "Using multilabel F1 for multi-label classification task, you can use --metric_name to overwrite."
                 )
             else:
-                # todo: make default a combined metric of accuracy, recall, precision, f1
                 # metric = evaluate.load("accuracy", cache_dir=model_args.cache_dir)
                 metric = evaluate.combine(["accuracy", "f1", "precision", "recall"])
                 logger.info(

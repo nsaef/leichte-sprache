@@ -1,13 +1,21 @@
 import os
+import re
 from statistics import mean
 
 from datasets import load_dataset
 import evaluate
 from lingua import Language, LanguageDetectorBuilder
+import pandas as pd
 import spacy
 import textstat
+from tqdm import tqdm
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import (
+    PreTrainedModel,
+    PreTrainedTokenizer,
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+)
 
 
 def calculate_readability_scores(text: str) -> dict:
@@ -167,9 +175,7 @@ def analyse_text_statistics(text: str) -> dict:
 
 
 def score_classification_set():
-    """Calculate scores on the classification dataset.
-    # todo: add classifier score?
-    """
+    """Calculate scores on the classification dataset."""
     # get the dataset
     dataset = load_dataset(os.getenv("HF_CLASSIFICATION_DATASET_NAME"), split="train")
 
@@ -258,7 +264,7 @@ def classifier_inference(model: PreTrainedModel, encoded_input, labels) -> tuple
 
 def run_classifier(
     model: PreTrainedModel, tokenizer: PreTrainedTokenizer, text: str
-) -> tuple:
+) -> dict:
     """Run the Leichte Sprache classifier. If the text input is too long for the model,
     it's split into chunks that can fit in the model and each chunk is classified
     separately. The predicted label and the logits are then calculated as a mean over all
@@ -290,7 +296,79 @@ def run_classifier(
         logits = torch.mean(torch.stack(all_logits), dim=0)
     else:
         predicted_class_id, logits = classifier_inference(model, encoded_input, labels)
-    return predicted_class_id, logits
+    return {"class_id": predicted_class_id, "logits": logits}
+
+
+def calc_share_newlines(text: str) -> dict:
+    """Calculate the share of newslines in the text by counting them and
+    normalizing them by the total number of characters. Mutliply by 100 to
+    make the numbers easier to interpret at first glance.
+    Values above 2 are typical for Leichte Sprache, values below 1 for standard
+    German.
+
+    :param text: text input
+    :return: {"share_newlines": share_newlines}
+    """
+    if not text.strip():
+        return {"share_newlines": 0}
+
+    rx = r"\n+"
+    subst = "\\n"
+    normalized = re.sub(rx, subst, text)
+    n_newlines = normalized.count("\n")
+    share_newlines = n_newlines / len(text) * 100
+    return {"share_newlines": share_newlines}
+
+
+def calculate_metrics(
+    model: AutoModelForSequenceClassification,
+    tokenizer: AutoTokenizer,
+    texts: list[str],
+    original_texts: list[str],
+    disable_tqdm: bool = False,
+) -> pd.DataFrame:
+    """Calculate metrics for the generated texts. Currently implemented:
+    - Leichte Spreche classifier (predicted label, logits)
+    - Readability metrics: Flesch reading ease, Wiener Sachtextformel
+    - Rouge2: bigram overlap
+    - Share newlines: number of newlines normalized by text length (>2 is typical for LS, <1 for SG)
+    - Shared token length: 1.0 => texts have the same length, 0.1 LS => is much shorter, 1.5 => LS is much longer
+
+    :param model: classification model
+    :param tokenizer: tokenizer of the classification model
+    :param texts: list of generated texts in Leichte Sprache
+    :param original_texts: list of original texts in standard German, for calculating rouge and length diff
+    :return: dataframe with the calculated metrics
+    """
+    scores = {
+        "text_gen": texts,
+        "text_orig": original_texts,
+        "predicted_class": [],
+        "logits_sg": [],
+        "logits_ls": [],
+        "flesch_reading_ease": [],
+        "wiener_sachtextformel": [],
+        "share_newlines": [],
+    }
+
+    for text in tqdm(texts, desc="Scoring generated texts", disable=disable_tqdm):
+        classifier_res = run_classifier(model, tokenizer, text)
+        readability = calculate_readability_scores(text)
+        share_newlines = calc_share_newlines(text)
+        scores["predicted_class"].append(classifier_res.get("class_id"))
+        scores["logits_sg"].append(classifier_res.get("logits")[0][0].item())
+        scores["logits_ls"].append(classifier_res.get("logits")[0][1].item())
+        scores["flesch_reading_ease"].append(readability["flesch_reading_ease"])
+        scores["wiener_sachtextformel"].append(readability["wiener_sachtextformel_4"])
+        scores["share_newlines"].append(share_newlines.get("share_newlines"))
+
+    gen_df = pd.DataFrame(scores)
+    gen_df["diff_logits"] = abs(gen_df.logits_sg - gen_df.logits_ls)
+    gen_df["shared_token_len"] = (
+        gen_df.text_gen.str.split().str.len() / gen_df.text_orig.str.split().str.len()
+    )
+    gen_df["rouge2"] = calculate_rouge(texts, original_texts)
+    return gen_df
 
 
 if __name__ == "__main__":

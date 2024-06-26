@@ -3,6 +3,7 @@ import os
 
 import pandas as pd
 import torch
+from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from vllm import LLM, SamplingParams
 
@@ -10,10 +11,7 @@ from leichte_sprache.constants import (
     LS_USER_PROMPT_TEXT,
     LS_SYSTEM_PROMPT_DICT,
 )
-from leichte_sprache.evaluation.score import (
-    calculate_readability_scores,
-    run_classifier,
-)
+from leichte_sprache.evaluation.score import calculate_metrics
 from leichte_sprache.utils.model_utils import generate_vllm
 from leichte_sprache.utils.utils import get_logger
 
@@ -124,57 +122,7 @@ def print_metrics(df: pd.DataFrame):
     logger.info(
         f"Mean Wiener Sachtextformel score for LS: {df[df.predicted_class == 1].wiener_sachtextformel.mean()}"
     )
-    # this requires graphics like histograms of logits etc...
-    # todo: consider pushing the evaluation to ML Flow? or build a streamlit dashboard?
-    # this is too long, the cosole doesn't show the statistics anymore if I run this
-    # logger.info("\n\nDetailed Outputs:")
-    # for index, row in gen_df.iterrows():
-    #     logger.info("\n\n##### New text #####")
-    #     logger.info(f"Predicted class: {row.predicted_class}")
-    #     logger.info(f"Logits: SG={row.logits_sg}, LS={row.logits_ls}, difference={row.diff_logits}")
-    #     logger.info(row.text_gen)
     return
-
-
-def calculate_metrics(
-    model: AutoModelForSequenceClassification,
-    tokenizer: AutoTokenizer,
-    texts: list[str],
-    orig_texts: list[str],
-) -> pd.DataFrame:
-    """Calculate metrics for the generated texts. Currently implemented:
-    - Leichte Spreche classifier (predicted label, logits)
-    - Readability metrics: Flesch reading ease, Wiener Sachtextformel
-
-    :param model: classification model
-    :param tokenizer: tokenizer of the classification model
-    :param texts: list of generated texts in Leichte Sprache
-    :param orig_texts: original texts in standard German
-    :return: dataframe with the calculated metrics
-    """
-    orig_texts_padded = [item for item in orig_texts for _ in range(5)]
-    scores = {
-        "text_gen": texts,
-        "text_orig": orig_texts_padded,
-        "predicted_class": [],
-        "logits_sg": [],
-        "logits_ls": [],
-        "flesch_reading_ease": [],
-        "wiener_sachtextformel": [],
-    }
-
-    for text in texts:
-        predicted_class_id, logits = run_classifier(model, tokenizer, text)
-        readability = calculate_readability_scores(text)
-        scores["predicted_class"].append(predicted_class_id)
-        scores["logits_sg"].append(logits[0][0].item())
-        scores["logits_ls"].append(logits[0][1].item())
-        scores["flesch_reading_ease"].append(readability["flesch_reading_ease"])
-        scores["wiener_sachtextformel"].append(readability["wiener_sachtextformel_4"])
-
-    gen_df = pd.DataFrame(scores)
-    gen_df["diff_logits"] = abs(gen_df.logits_sg - gen_df.logits_ls)
-    return gen_df
 
 
 def generate_and_evaluate(args):
@@ -194,7 +142,9 @@ def generate_and_evaluate(args):
     model = AutoModelForSequenceClassification.from_pretrained(
         args.classification_model
     )
-    gen_df = calculate_metrics(model, tokenizer, texts, list(df.text))
+    orig_texts = [item for item in list(df.text) for _ in range(5)]
+    gen_df = calculate_metrics(model, tokenizer, texts, original_texts=orig_texts)
+
     print_metrics(gen_df)
     if os.path.exists(args.model_name):
         gen_df.to_csv(f"{args.model_name}/metrics.csv")

@@ -8,9 +8,62 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    PreTrainedTokenizer,
 )
 
 from peft import LoraConfig
+
+from leichte_sprache.constants import (
+    LS_SYSTEM_PROMPT_DICT,
+    LS_USER_PROMPT_TEXT,
+    LS_COLUMN,
+    SG_COLUMN,
+    CHAT_COLUMN,
+)
+
+
+def transform_to_chat(
+    row,
+    tokenizer: PreTrainedTokenizer,
+    col_user: str = SG_COLUMN,
+    col_assistant: str = LS_COLUMN,
+    col_return_value: str = CHAT_COLUMN,
+    system_msg: bool = True,
+    user_msg: bool = True,
+    assistant_msg: bool = True,
+) -> dict:
+    """Takes a row of a dataset as input and uses its data to create chat messages.
+
+    :param row: dataset row
+    :param tokenizer: tokenizer with the desired chat template
+    :param col_user: column containing the texts for the role "user", defaults to "standard_german"
+    :param col_assistant: column containing the texts for the role "assistant", defaults to "leichte_sprache"
+    :param col_return_value: name of the dataset column to contain the reformatetd return data, defaults to "chat"
+    :param system_msg: add a system prompt message, defaults to True
+    :param user_msg: add a user prompt message, defaults to True
+    :param assistant_msg: add an assistant reply message, defaults to True
+    :return: dictionary -> {col_return_value: [{"role": "user", "content": "foo"},{"role": "assistant", "content": "bar"}]}
+    """
+    messages = []
+    if system_msg:
+        messages.append(LS_SYSTEM_PROMPT_DICT)
+    if user_msg:
+        text_user = row[col_user]
+        messages.append(
+            {
+                "role": "user",
+                "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text_user),
+            }
+        )
+    if assistant_msg:
+        text_assistant = row[col_assistant]
+        messages.append(
+            {"role": "assistant", "content": text_assistant},
+        )
+    chat = tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=False
+    )
+    return {col_return_value: chat}
 
 
 DEFAULT_CHATML_CHAT_TEMPLATE = "{% for message in messages %}\n{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% if loop.last and add_generation_prompt %}{{'<|im_start|>assistant\n' }}{% endif %}{% endfor %}"

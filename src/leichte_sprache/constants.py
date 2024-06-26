@@ -4,6 +4,9 @@
 CRAWLER_TABLE = "crawled_texts"
 DATASET_SINGULAR_TABLE = "dataset_singular"
 DATASET_TRANSLATED_TABLE = "dataset_singular_translated"
+DPO_PAIRS = "dpo_paired_data"
+DPO_RAW = "dpo_raw_generations"
+DPO_SCORED = "dpo_scored_generations"
 
 ## dataset labels ###
 LS_LABEL = "leichte_sprache"
@@ -24,6 +27,13 @@ TRANSLATED_COLUMN = "translated"
 CHAT_COLUMN = "chat"
 PROMPTS_COLUMN = "prompts"
 ORIG_IDS_COLUMN = "orig_ids"
+CONTENT_COLUMN = "content"
+GENERATED_COLUMN = "generated"
+TEXT_ORIG_COLUMN = "text_orig"
+PROMPT_COLUMN = "prompt"
+PROMPT_ID_COLUMN = "prompt_id"
+CHOSEN = "chosen"
+REJECTED = "rejected"
 
 ### Crawler arguments ###
 DLF_DICT = "dlf_dict"

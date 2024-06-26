@@ -41,7 +41,6 @@ def extract_pdf_das_parlament(f: bytes) -> list[dict]:
     :return: list with one result dictionary per article
     """
 
-    # todo find date
     FONT_MAPPING = {
         r"\w{6}\+TheMixOffice-Bold,16.0": ARTICLE_TITLE,
         r"\w{6}\+TheMixOffice-Bold,14.0": ARTICLE_SUBTITLE,
