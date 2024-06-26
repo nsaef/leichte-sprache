@@ -13,6 +13,22 @@ from leichte_sprache.constants import (
     PROMPTS_COLUMN,
     LS_SYSTEM_PROMPT_DICT,
     LS_USER_PROMPT_TEXT,
+    DPO_PAIRS,
+    DPO_RAW,
+    DPO_SCORED,
+    SRC_COLUMN,
+    URL_COLUMN,
+    CONTENT_COLUMN,
+    PROMPTS_COLUMN,
+    TEXT_COLUMN,
+    ID_COLUMN,
+    PROMPT_COLUMN,
+    PROMPT_ID_COLUMN,
+    GENERATED_COLUMN,
+    TEXT_ORIG_COLUMN,
+    TEXT_COLUMN,
+    CHOSEN,
+    REJECTED,
 )
 from leichte_sprache.dataset.data_management import push_to_hf_hub
 from leichte_sprache.evaluation.run_model import create_prompts, calculate_metrics
@@ -120,9 +136,9 @@ def get_wiki_dataset() -> Dataset:
     # return split dataset
     wiki_ds = Dataset.from_dict(
         {
-            "content": articles,
-            "source": ["wiki" for _ in range(len(articles))],
-            "url": urls,
+            CONTENT_COLUMN: articles,
+            SRC_COLUMN: ["wiki" for _ in range(len(articles))],
+            URL_COLUMN: urls,
         }
     )
     return wiki_ds
@@ -154,7 +170,7 @@ def get_web_dataset(target_size: int = 3000) -> Dataset:
                     pbar.update(1)
                 if len(articles) == target_size:
                     break
-    web_ds = Dataset.from_list(articles).rename_column("text", "content")
+    web_ds = Dataset.from_list(articles).rename_column("text", CONTENT_COLUMN)
     return web_ds
 
 
@@ -168,11 +184,11 @@ def get_news_dataset() -> Dataset:
         load_dataset("bjoernp/tagesschau-010124-020524", split="train")
         .map(
             lambda x: {
-                "content": f"{x['headline']}\n{x['article']}",
-                "source": "tagesschau",
+                CONTENT_COLUMN: f"{x['headline']}\n{x['article']}",
+                SRC_COLUMN: "tagesschau",
             }
         )
-        .rename_column("link", "url")
+        .rename_column("link", URL_COLUMN)
         .shuffle()
     )
     return news_dataset
@@ -201,7 +217,7 @@ def build_standard_german_dataset(
     wiki_ds = get_wiki_dataset()
     web_ds = get_web_dataset(target_size=size_per_dataset)
     news_ds = get_news_dataset()
-    valid_columns = ["content", "source", "url"]
+    valid_columns = [CONTENT_COLUMN, SRC_COLUMN, URL_COLUMN]
     dataset = concatenate_datasets(
         [
             wiki_ds.shuffle()
@@ -219,7 +235,7 @@ def build_standard_german_dataset(
     )
     text_len = calculate_usable_text_length(
         tokenizer=tokenizer,
-        texts=dataset["content"],
+        texts=dataset[CONTENT_COLUMN],
         prompt_len=tokens_prompt,
         model_max_len=model_max_length,
     )
@@ -298,7 +314,7 @@ def run_vllm_generation(
 
         while start_idx < len(dataset):
             prompts = dataset[prompt_col_name][start_idx : start_idx + batch_size]
-            orig_texts = dataset["content"][start_idx : start_idx + batch_size]
+            orig_texts = dataset[CONTENT_COLUMN][start_idx : start_idx + batch_size]
             try:
                 outputs = generate_vllm(prompts, llm, sampling_params, use_tqdm=False)
                 df = process_vllm_outputs(outputs, orig_texts=orig_texts)
@@ -345,11 +361,11 @@ def process_vllm_outputs(outputs, orig_texts: list[str]) -> pd.DataFrame:
 
     # store the result in a database
     result = {
-        "id": text_ids,
-        "prompt_id": prompt_ids,
-        "prompt": prompts_formatted,
-        "text_orig": orig_texts_per_gen,
-        "generated": texts,
+        ID_COLUMN: text_ids,
+        PROMPT_ID_COLUMN: prompt_ids,
+        PROMPT_COLUMN: prompts_formatted,
+        TEXT_ORIG_COLUMN: orig_texts_per_gen,
+        GENERATED_COLUMN: texts,
     }
 
     df = pd.DataFrame(result)
@@ -371,8 +387,8 @@ def generate_raw_dpo_dataset(model_name: str, target_size: int = 1000):
     :param target_size: target size for the standard German dataset, defaults to 1000
     """
     dataset = build_standard_german_dataset(model_name, target_size=target_size)
-    prompts = create_prompts(dataset["content"])  # todo constants
-    dataset = dataset.add_column(name="prompts", column=prompts)  # todo constants
+    prompts = create_prompts(dataset[CONTENT_COLUMN])
+    dataset = dataset.add_column(name=PROMPTS_COLUMN, column=prompts)
 
     # note: this refactored function would be preferable, but isn't ready yet
     # run_vllm_batch_generation(
@@ -388,9 +404,9 @@ def generate_raw_dpo_dataset(model_name: str, target_size: int = 1000):
     run_vllm_generation(
         dataset=dataset,
         model_id=model_name,
-        table_name="dpo_raw_generations",
-        prompt_col_name="prompts",
-        result_col_name="generated",
+        table_name=DPO_RAW,
+        prompt_col_name=PROMPTS_COLUMN,
+        result_col_name=GENERATED_COLUMN,
     )
     return
 
@@ -404,8 +420,8 @@ def score_dpo_generations(classification_model: str, batch_size: int = 100):
     """
     conn = get_connector()
     sql = f"""
-        SELECT * FROM dpo_raw_generations
-        WHERE id NOT IN (SELECT id FROM dpo_scored_generations);
+        SELECT * FROM {DPO_RAW}
+        WHERE {ID_COLUMN} NOT IN (SELECT {ID_COLUMN} FROM {DPO_SCORED});
     """
     tokenizer = AutoTokenizer.from_pretrained(classification_model)
     model = AutoModelForSequenceClassification.from_pretrained(classification_model)
@@ -415,8 +431,8 @@ def score_dpo_generations(classification_model: str, batch_size: int = 100):
     with tqdm(total=len(dataset)) as pbar:
         pbar.set_description("Scoring DPO generations")
         while start_idx < len(dataset):
-            texts = dataset["generated"][start_idx : start_idx + batch_size]
-            orig_texts = dataset["text_orig"][start_idx : start_idx + batch_size]
+            texts = dataset[GENERATED_COLUMN][start_idx : start_idx + batch_size]
+            orig_texts = dataset[TEXT_ORIG_COLUMN][start_idx : start_idx + batch_size]
             df = calculate_metrics(
                 model=model,
                 tokenizer=tokenizer,
@@ -424,10 +440,14 @@ def score_dpo_generations(classification_model: str, batch_size: int = 100):
                 original_texts=orig_texts,
                 disable_tqdm=True,
             )
-            df["id"] = dataset["id"][start_idx : start_idx + batch_size]
-            df["prompt_id"] = dataset["prompt_id"][start_idx : start_idx + batch_size]
-            df["prompt"] = dataset["prompt"][start_idx : start_idx + batch_size]
-            ingest_pandas(df, "dpo_scored_generations")
+            df[ID_COLUMN] = dataset[ID_COLUMN][start_idx : start_idx + batch_size]
+            df[PROMPT_ID_COLUMN] = dataset[PROMPT_ID_COLUMN][
+                start_idx : start_idx + batch_size
+            ]
+            df[PROMPT_COLUMN] = dataset[PROMPT_COLUMN][
+                start_idx : start_idx + batch_size
+            ]
+            ingest_pandas(df, DPO_SCORED)
             start_idx += batch_size
             pbar.update(batch_size)
     return
@@ -443,7 +463,7 @@ def sort_dpo_generations():
     """
     conn = get_connector()
     sql = f"""
-        SELECT * FROM dpo_scored_generations
+        SELECT * FROM {DPO_SCORED}
     """
     df = pd.read_sql(sql, conn)
     dfs = []
@@ -462,20 +482,20 @@ def sort_dpo_generations():
         rejected_df = prompt_df[~prompt_df.id.isin(chosen_df.id)]
         if len(chosen_df) > 0 and len(rejected_df) > 0:
             dpo_df = chosen_df.merge(
-                rejected_df, how="cross", suffixes=["_chosen", "_rejected"]
-            )[["prompt_chosen", "text_gen_chosen", "text_gen_rejected"]]
+                rejected_df, how="cross", suffixes=[f"_{CHOSEN}", f"_{REJECTED}"]
+            )[[f"prompt_{CHOSEN}", f"text_gen_{CHOSEN}", f"text_gen_{REJECTED}"]]
             dfs.append(dpo_df)
         # look for patterns to corrupt - later
 
     res_df = pd.concat(dfs)
     res_df = res_df.rename(
         columns={
-            "prompt_chosen": "prompt",
-            "text_gen_chosen": "chosen",
-            "text_gen_rejected": "rejected",
+            f"{PROMPT_COLUMN}_{CHOSEN}": PROMPT_COLUMN,
+            f"text_gen_{CHOSEN}": CHOSEN,
+            f"text_gen_{REJECTED}": REJECTED,
         }
-    )  # todo constants
-    ingest_pandas(res_df, "dpo_paired_data", if_exists="replace")  # todo constants
+    )
+    ingest_pandas(res_df, DPO_PAIRS, if_exists="replace")
     return
 
 
@@ -486,7 +506,7 @@ def create_hf_dpo_dataset():
     """
     conn = get_connector()
     sql = f"""
-        SELECT * FROM dpo_paired_data
+        SELECT * FROM {DPO_PAIRS}
     """
     dataset = Dataset.from_sql(sql, con=conn)
     # todo add to env vars
