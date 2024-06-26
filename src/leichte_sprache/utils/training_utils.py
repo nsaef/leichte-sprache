@@ -38,8 +38,11 @@ def transform_to_chat(
     :param tokenizer: tokenizer with the desired chat template
     :param col_user: column containing the texts for the role "user", defaults to "standard_german"
     :param col_assistant: column containing the texts for the role "assistant", defaults to "leichte_sprache"
-    #todo update docstring with new parameters
-    :return: dictionary -> {"chat": [{"role": "user", "content": "foo"},{"role": "assistant", "content": "bar"}]}
+    :param col_return_value: name of the dataset column to contain the reformatetd return data, defaults to "chat"
+    :param system_msg: add a system prompt message, defaults to True
+    :param user_msg: add a user prompt message, defaults to True
+    :param assistant_msg: add an assistant reply message, defaults to True
+    :return: dictionary -> {col_return_value: [{"role": "user", "content": "foo"},{"role": "assistant", "content": "bar"}]}
     """
     messages = []
     if system_msg:

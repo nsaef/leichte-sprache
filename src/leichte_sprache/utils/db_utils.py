@@ -187,7 +187,10 @@ def query_db(sql: str) -> list[dict]:
 
 
 def drop_table(table_name: str):
-    # todo docstring
+    """Utility function to drop a table.
+
+    :param table_name: name of the table to be deleted
+    """
     conn = get_connector()
     conn.execute(f"DROP TABLE IF EXISTS {table_name}")
     conn.commit()
