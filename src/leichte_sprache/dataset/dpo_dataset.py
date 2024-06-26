@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from hashlib import md5
+import os
 import re
 
 from datasets import load_dataset, Dataset, concatenate_datasets
@@ -20,13 +21,11 @@ from leichte_sprache.constants import (
     URL_COLUMN,
     CONTENT_COLUMN,
     PROMPTS_COLUMN,
-    TEXT_COLUMN,
     ID_COLUMN,
     PROMPT_COLUMN,
     PROMPT_ID_COLUMN,
     GENERATED_COLUMN,
     TEXT_ORIG_COLUMN,
-    TEXT_COLUMN,
     CHOSEN,
     REJECTED,
 )
@@ -50,11 +49,13 @@ def parse_args() -> ArgumentParser:
         prog="Leichte Sprache Inference",
         description="Run inference on a finetuned model",
     )
+    # todo: add huggingface name of AWQ-quantized model from env vars as default value, add entrypoint
     parser.add_argument(
         "--model_name",
         required=True,
         help="Name or path of the base model of the finetuned model",
     )
+    # todo: add huggingface name of classification model from env vars as default value, add entrypoint
     parser.add_argument(
         "--classification_model",
         help="Name or path of a classifier for Leichte Sprache",
@@ -510,7 +511,7 @@ def create_hf_dpo_dataset():
     """
     dataset = Dataset.from_sql(sql, con=conn)
     # todo add to env vars
-    push_to_hf_hub(dataset, "nsaef/German_leichte_sprache_dpo")
+    push_to_hf_hub(dataset, os.getenv("HF_DPO_DATASET_NAME"))
     return
 
 
