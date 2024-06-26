@@ -29,13 +29,13 @@ def run_vllm_batch_generation(
      according the the `batch_size` parameter. The outputs of each batch are stored
      in a database. In order to store the outputs in a database in the correct format,
      it is necessary to provide a function to process the outputs. This function takes
-     vLLM outputs (`list[RequestOutput]`) as a mandatory parameter, optional keyword
+     vLLM outputs (`list[RequestOutput]`), the batc as a mandatory parameter, optional keyword
      arguments (`output_fn_kwargs`) and must return a pandas DataFrame. The DataFrame
      will then be inserted into the DB.
 
      Example function:
      ```
-     def process_output(outputs, ids: list) -> pd.DataFrame():
+     def process_output(outputs, start_idx, end_idx, ids: list) -> pd.DataFrame():
         texts = [o.text for output in outputs for o in output.outputs if o.finish_reason == "stop"]
         res = {"text": texts, "id": ids}
         df = pd.DataFrame(res)
@@ -61,7 +61,7 @@ def run_vllm_batch_generation(
     :param output_function_kwargs: keyword-arguments to pass to `process_output`
     :param batch_size: number of rows per batch, defaults to 20
     :param max_model_len: maximum model input length, defaults to 1024
-    :param sampling_params:
+    :param sampling_params: sampling parameters
     """
     llm = LLM(model=model_id, max_model_len=max_model_len, dtype=torch.float16)
     if not sampling_params:
@@ -83,7 +83,9 @@ def run_vllm_batch_generation(
             prompts = dataset[ds_prompt_col_name][start_idx : start_idx + batch_size]
             try:
                 outputs = generate_vllm(prompts, llm, sampling_params, use_tqdm=False)
-                result = process_output(outputs, **output_fn_kwargs)
+                result = process_output(
+                    outputs, start_idx, start_idx + batch_size, **output_fn_kwargs
+                )
                 df = pd.DataFrame(result)
                 ingest_pandas(df, result_table_name)
             except AssertionError as e:

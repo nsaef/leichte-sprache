@@ -7,8 +7,7 @@ from datasets import load_dataset, Dataset, concatenate_datasets
 import pandas as pd
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from tqdm import tqdm
-import torch
-from vllm import LLM, SamplingParams
+from vllm import SamplingParams
 
 from leichte_sprache.constants import (
     PROMPTS_COLUMN,
@@ -65,6 +64,11 @@ def parse_args() -> ArgumentParser:
         "--dataset_target_size",
         help="Target size of the dataset to create. Expect the actual dataset to be about 66% of this number, as about one third of rows is filtered due to length contstraints.",
         default=1000,
+    )
+    parser.add_argument(
+        "--max_length",
+        help="Maximum length of the model context in tokens. Used to set the max length during generation, and to remove long samples from the dataset.",
+        default=2048,
     )
     args = parser.parse_args()
     return args
@@ -279,61 +283,16 @@ def calculate_usable_text_length(
     return res
 
 
-def run_vllm_generation(
-    dataset: Dataset,
-    model_id: str,
-    table_name: str,
-    prompt_col_name: str,
-    result_col_name: str,
-    batch_size: int = 10,
-    n_sequences: int = 5,
-):
-    """Generate output from prompts in a dataset using VLLM. The prompts are batched
-     according the the `batch_size` parameter. The outputs of each batch are stored
-     in a database.
-
-    :param dataset: dataset object
-    :param model_id: name or path of the model
-    :param table_name: name of the db table in which the results are stored
-    :param prompt_col_name: name of the dataset column containing the prompts
-    :param result_col_name: name of the db table column in which to write the results
-    :param batch_size: number of rows per batch, defaults to 10
-    :params n_sequences: number of return sequences per prompt, defaults to 5
-    """
-    llm = LLM(model=model_id, max_model_len=2048, dtype=torch.float16)  # Create an LLM.
-    sampling_params = SamplingParams(
-        temperature=0.6,
-        top_p=0.9,
-        skip_special_tokens=True,
-        top_k=50,
-        n=n_sequences,
-    )
-    start_idx = 0
-
-    with tqdm(total=len(dataset)) as pbar:
-        pbar.set_description("Generating DPO Samples")
-
-        while start_idx < len(dataset):
-            prompts = dataset[prompt_col_name][start_idx : start_idx + batch_size]
-            orig_texts = dataset[CONTENT_COLUMN][start_idx : start_idx + batch_size]
-            try:
-                outputs = generate_vllm(prompts, llm, sampling_params, use_tqdm=False)
-                df = process_vllm_outputs(outputs, orig_texts=orig_texts)
-                ingest_pandas(df, table_name)
-            except (AssertionError, ValueError) as e:
-                logger.debug(e)
-                logger.debug(prompts)
-            start_idx += batch_size
-            pbar.update(batch_size)
-    return
-
-
-def process_vllm_outputs(outputs, orig_texts: list[str]) -> pd.DataFrame:
+def process_vllm_outputs(
+    outputs, start_idx: int, end_index: int, orig_texts: list[str]
+) -> pd.DataFrame:
     """Process the vLLM outputs and reformat them into a DataFrame that
     can be inserted into the project DB.
 
     :param outputs: list of vLLM RequestOutput objects
-    :param orig_texts: list of original texts_
+    :param start_idx: start index of the batch
+    :param end_idx: end index of the batch
+    :param orig_texts: list of original texts
     :return: dataframe containing the generated texts with metadata
     """
     # get results and create IDs
@@ -357,7 +316,10 @@ def process_vllm_outputs(outputs, orig_texts: list[str]) -> pd.DataFrame:
     ]
     text_ids = [md5(t.encode("utf-8")).hexdigest() for t in texts]
     orig_texts_per_gen = [
-        t for prompt in prompts_formatted for t in orig_texts if t in prompt
+        t
+        for prompt in prompts_formatted
+        for t in orig_texts[start_idx:end_index]
+        if t in prompt
     ]
 
     # store the result in a database
@@ -373,7 +335,7 @@ def process_vllm_outputs(outputs, orig_texts: list[str]) -> pd.DataFrame:
     return df
 
 
-def generate_raw_dpo_dataset(model_name: str, target_size: int = 1000):
+def generate_raw_dpo_dataset(model_name: str, target_size: int, model_max_length: int):
     """Generate the basis for a DPO dataset by creating several variants
     in Leichte Sprache for a number of prompts in standard German.
 
@@ -385,29 +347,33 @@ def generate_raw_dpo_dataset(model_name: str, target_size: int = 1000):
     that finish due to a stop token being generated are used.
 
     :param model_name: generative model that can produce Leichte Sprache
-    :param target_size: target size for the standard German dataset, defaults to 1000
+    :param target_size: target size for the standard German dataset
+    :param model_max_length: model's context size
     """
-    dataset = build_standard_german_dataset(model_name, target_size=target_size)
+    dataset = build_standard_german_dataset(
+        model_name, target_size=target_size, model_max_length=model_max_length
+    )
     prompts = create_prompts(dataset[CONTENT_COLUMN])
     dataset = dataset.add_column(name=PROMPTS_COLUMN, column=prompts)
 
     # note: this refactored function would be preferable, but isn't ready yet
-    # run_vllm_batch_generation(
-    #     dataset=dataset,
-    #     model_id=model_name,
-    #     result_table_name="dpo_raw_generations",
-    #     ds_prompt_col_name="prompts",
-    #     batch_size=10,
-    #     max_model_len=2048,
-    #     process_output=process_vllm_outputs,
-    #     output_fn_kwargs={"orig_texts": dataset["content"]}
-    # )
-    run_vllm_generation(
+    sampling_params = SamplingParams(
+        temperature=0.6,
+        top_p=0.9,
+        skip_special_tokens=True,
+        top_k=50,
+        n=5,
+    )
+    run_vllm_batch_generation(
         dataset=dataset,
         model_id=model_name,
-        table_name=DPO_RAW,
-        prompt_col_name=PROMPTS_COLUMN,
-        result_col_name=GENERATED_COLUMN,
+        result_table_name=DPO_RAW,
+        ds_prompt_col_name=PROMPTS_COLUMN,
+        batch_size=10,
+        max_model_len=model_max_length,
+        process_output=process_vllm_outputs,
+        output_fn_kwargs={"orig_texts": dataset[CONTENT_COLUMN]},
+        sampling_params=sampling_params,
     )
     return
 
@@ -517,7 +483,12 @@ def create_hf_dpo_dataset():
 
 if __name__ == "__main__":
     args = parse_args()
-    generate_raw_dpo_dataset(args.model_name, target_size=int(args.dataset_target_size))
+    model_max_length = int(args.max_length)
+    generate_raw_dpo_dataset(
+        args.model_name,
+        target_size=int(args.dataset_target_size),
+        model_max_length=model_max_length,
+    )
     score_dpo_generations(args.classification_model)
     sort_dpo_generations()
     create_hf_dpo_dataset()
