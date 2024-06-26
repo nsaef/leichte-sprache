@@ -1,8 +1,6 @@
 import datasets
 import pandas as pd
-import torch
-from tqdm import tqdm
-from vllm import LLM, SamplingParams
+from vllm import SamplingParams
 
 from leichte_sprache.constants import (
     DATASET_SINGULAR_TABLE,
@@ -13,8 +11,8 @@ from leichte_sprache.constants import (
     ORIG_IDS_COLUMN,
     ID_COLUMN,
 )
-from leichte_sprache.utils.db_utils import ingest_pandas, get_connector
-from leichte_sprache.utils.model_utils import generate_vllm
+from leichte_sprache.utils.db_utils import get_connector
+from leichte_sprache.utils.model_utils import run_vllm_batch_generation
 from leichte_sprache.utils.utils import get_logger
 
 
@@ -78,51 +76,32 @@ def load_and_prepare_dataset_from_db() -> datasets.Dataset:
     return dataset
 
 
-def run_vllm_generation(
+def process_vllm_outputs(
+    outputs: list,
+    start_idx: int,
+    end_idx: int,
+    result_col_name: str,
+    prompt_col_name: str,
     dataset: datasets.Dataset,
-    model_id: str,
-    table_name: str = DATASET_TRANSLATED_TABLE,
-    prompt_col_name: str = PROMPTS_COLUMN,
-    result_col_name: str = TRANSLATED_COLUMN,
-    batch_size: int = 20,
-):
-    """Generate output from prompts in a dataset using VLLM. The prompts are batched
-     according the the `batch_size` parameter. The outputs of each batch are stored
-     in a database.
+) -> pd.DataFrame:
+    """Process the vLLM outputs and create a DataFrame that can be inserted
+    into the project DB table. Prompts are converted from list of dictionaries
+    to strings.
 
-    :param dataset: dataset object
-    :param model_id: name or path of the model
-    :param table_name: name of the db table in which the results are stored, defaults to "dataset_singular_translated"
-    :param prompt_col_name: name of the dataset column containing the prompts, defaults to "prompts"
-    :param result_col_name: name of the db table column in which to write the results, defaults to "translated"
-    :param batch_size: number of rows per batch, defaults to 20
+    :param outputs: list of vLLM RequestOutput objects
+    :param start_idx: start index of the current batch
+    :param end_idx: end index of the current batch
+    :param result_col_name: name of the DB column to store the generation results in
+    :param prompt_col_name: name of the DB column to store the prompts in
+    :param dataset: full dataset
+    :return: dataframe generation results and metadata
     """
-    llm = LLM(model=model_id, max_model_len=4096, dtype=torch.float16)  # Create an LLM.
-    sampling_params = SamplingParams(
-        temperature=0.6,
-        top_p=0.9,
-        skip_special_tokens=True,
-        top_k=50,
-        n=1,
-    )
-    start_idx = 0
-
-    with tqdm(total=len(dataset)) as pbar:
-        pbar.set_description("Translating Leichte Sprache to complicated German")
-        while start_idx < len(dataset):
-            prompts = dataset[prompt_col_name][start_idx : start_idx + batch_size]
-            outputs = generate_vllm(prompts, llm, sampling_params, use_tqdm=False)
-            texts = [o.outputs[0].text for o in outputs]
-            subset = dataset[start_idx : start_idx + batch_size]
-            subset[result_col_name] = texts
-            translation_df = pd.DataFrame(subset)
-            translation_df[prompt_col_name] = translation_df[prompt_col_name].astype(
-                str
-            )
-            ingest_pandas(translation_df, table_name)
-            start_idx += batch_size
-            pbar.update(batch_size)
-    return
+    texts = [o.outputs[0].text for o in outputs]
+    subset = dataset[start_idx:end_idx]
+    subset[result_col_name] = texts
+    translation_df = pd.DataFrame(subset)
+    translation_df[prompt_col_name] = translation_df[prompt_col_name].astype(str)
+    return translation_df
 
 
 def transform_singular_dataset():
@@ -136,7 +115,28 @@ def transform_singular_dataset():
 
     model_id = "DiscoResearch/Llama3-DiscoLeo-Instruct-8B-v0.1-4bit-awq"
     dataset = load_and_prepare_dataset_from_db()
-    run_vllm_generation(dataset, model_id)
+    sampling_params = SamplingParams(
+        temperature=0.6,
+        top_p=0.9,
+        skip_special_tokens=True,
+        top_k=50,
+        n=1,
+    )
+    run_vllm_batch_generation(
+        dataset=dataset,
+        model_id=model_id,
+        result_table_name=DATASET_TRANSLATED_TABLE,
+        ds_prompt_col_name=PROMPTS_COLUMN,
+        process_output=process_vllm_outputs,
+        output_fn_kwargs={
+            "result_col_name": TRANSLATED_COLUMN,
+            "prompt_col_name": PROMPTS_COLUMN,
+            "dataset": dataset,
+        },
+        batch_size=20,
+        max_model_len=4096,
+        sampling_params=sampling_params,
+    )
     return
 
 
