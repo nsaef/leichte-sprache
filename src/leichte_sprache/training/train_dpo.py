@@ -51,7 +51,6 @@ python examples/scripts/dpo.py \
 """
 import sys
 import logging
-import multiprocessing
 import os
 from contextlib import nullcontext
 
@@ -92,6 +91,8 @@ if TRL_USE_RICH:
 
 
 def run_dpo_training(args, training_args, model_config):
+    os.environ["MLFLOW_EXPERIMENT_NAME"] = os.getenv("MLFLOW_EXPERIMENT_NAME") + "_dpo"
+
     # Force use our print callback
     if TRL_USE_RICH:
         training_args.disable_tqdm = True
