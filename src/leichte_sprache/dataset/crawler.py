@@ -32,6 +32,7 @@ from leichte_sprache.constants import (
     MDR_NEWS,
     HURRAKI,
     PARLAMENT,
+    STADT_KOELN,
 )
 from leichte_sprache.dataset.parse_pdfs import extract_pdf_das_parlament
 from leichte_sprache.utils.db_utils import (
@@ -655,6 +656,73 @@ class Crawler:
         insert_rows(table_name=CRAWLER_TABLE, rows=articles)
         return
 
+    def parse_stadt_koeln_article(self, url: str) -> list[dict]:
+        """Parse a website in Leichte Sprache of the Stadt Köln. The websites
+        usually include multiple sections. Parse each one as a separate article,
+        as the whole would be too long for the model contexts that can currently
+        be supported.
+
+        :param url: page URL
+        :return: list of dicts with each section of the page as one article
+        """
+        soup = self.make_soup(url)
+        articles = []
+
+        # parse the subsections
+        paragraphs = soup.select("main div.tinyblock p")
+        current_headline = soup.select_one("h1")
+        current_article = []
+
+        for par in paragraphs:
+            previous_h2 = par.find_previous("h2")
+            if (
+                "unsichtbar" not in previous_h2.get("class", [])
+                and previous_h2 != current_headline
+            ):
+                article = self.make_result(
+                    source=STADT_KOELN,
+                    url=url,
+                    crawl_date=datetime.now(),
+                    title=current_headline.text,
+                    text="\n".join(
+                        [
+                            (
+                                element.text
+                                if element.name != "li"
+                                else f"• {element.text}"
+                            )
+                            for element in current_article
+                        ]
+                    ),
+                )
+                articles.append(article)
+                current_headline = previous_h2
+                current_article = []
+            current_article.append(par)
+            if par.next_sibling and par.next_sibling.name == "ul":
+                list_items = [li for li in par.next_sibling.children]
+                current_article.extend(list_items)
+        return articles
+
+    def crawl_stadt_koeln(self):
+        """Crawl Stadt Köln pages in Leichte Sprache and store them in the project DB."""
+        logger.info("Crawling Stadt Köln pages in Leichte Sprache")
+        base_url = "https://www.stadt-koeln.de/artikel/07808/index.html"
+        all_links = self.get_links_per_page(
+            page_url=base_url,
+            selector="div.accordionpanel ul.textteaserliste li a",
+            url_prefix="https://www.stadt-koeln.de",
+        )
+        links = self._filter_known_urls(all_links)
+        articles = []
+
+        for link in tqdm(links, desc="Parsing Stadt Köln articles"):
+            res = self.parse_stadt_koeln_article(link)
+            articles.extend(res)
+
+        insert_rows(table_name=CRAWLER_TABLE, rows=articles)
+        return
+
     def get_valid_parlament_editions(self, links: list[str]) -> list[str]:
         """Retrieve the URLs of Das Parlament editions with Leichte Sprache.
         Remove the older editions without it.
@@ -746,6 +814,7 @@ def run_crawler(
     mdr_news: bool,
     hurraki: bool,
     parlament: bool,
+    stadt_koeln: bool,
 ):
     """Crawl content in Leichte Sprache.
 
@@ -756,6 +825,7 @@ def run_crawler(
     :param mdr_news: Crawl the MDR news
     :param hurraki: Crawl the Hurraki wiki in Leichte Sprache
     :param parlament: Crawl "Das Parlament" (newspaper of the German Bundestag with four pages Leichte Sprache)
+    :param stadt_koeln: Crawl the Stadt Köln information in Leichte Sprache
     """
     crawler = Crawler()
 
@@ -767,6 +837,8 @@ def run_crawler(
         crawler.crawl_hurraki()
     if parlament:
         crawler.crawl_das_parlament()
+    if stadt_koeln:
+        crawler.crawl_stadt_koeln()
     return
 
 
@@ -780,7 +852,16 @@ def parse_args() -> ArgumentParser:
     )
     parser.add_argument(
         "--sources",
-        choices=[DLF_NEWS, DLF_DICT, NDR, MDR_DICT, MDR_NEWS, HURRAKI, PARLAMENT],
+        choices=[
+            DLF_NEWS,
+            DLF_DICT,
+            NDR,
+            MDR_DICT,
+            MDR_NEWS,
+            HURRAKI,
+            PARLAMENT,
+            STADT_KOELN,
+        ],
         nargs="*",
         help="Select the sources to crawl. If this argument is not used, all sources will be crawled.",
     )
@@ -800,4 +881,5 @@ if __name__ == "__main__":
         mdr_news=True if not args.sources or MDR_NEWS in args.sources else False,
         hurraki=True if not args.sources or HURRAKI in args.sources else False,
         parlament=True if not args.sources or PARLAMENT in args.sources else False,
+        stadt_koeln=True if not args.sources or STADT_KOELN in args.sources else False,
     )
