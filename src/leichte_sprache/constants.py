@@ -43,6 +43,7 @@ MDR_DICT = "mdr_dict"
 MDR_NEWS = "mdr_news"
 HURRAKI = "hurraki"
 PARLAMENT = "das_parlament"
+STADT_KOELN = "stadt_koeln"
 ALL_SOURCES = "all_sources"
 
 ### PDF sections DAS PARLAMENT ###
