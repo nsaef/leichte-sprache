@@ -190,7 +190,7 @@ def create_hf_dataset():
     filtered_df = filtered_df.shuffle()
 
     # push to hub
-    push_to_hf_hub(dataset, os.getenv("HF_DATASET_NAME"))
+    push_to_hf_hub(filtered_df, os.getenv("HF_DATASET_NAME"))
     return
 
 
