@@ -3,16 +3,14 @@ import os
 
 import pandas as pd
 import torch
-from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from vllm import LLM, SamplingParams
 
 from leichte_sprache.constants import (
     LS_USER_PROMPT_TEXT,
     LS_SYSTEM_PROMPT_DICT,
 )
 from leichte_sprache.evaluation.score import calculate_metrics
-from leichte_sprache.utils.model_utils import generate_vllm
+from leichte_sprache.inference.inference import run_inference_vllm
 from leichte_sprache.utils.utils import get_logger
 
 
@@ -64,33 +62,6 @@ def create_prompts(texts: list[str]) -> list[dict]:
         ]
         messages.append(message)
     return messages
-
-
-def run_inference_vllm(args: ArgumentParser, prompts: list[str]) -> list[str]:
-    """Run inference using vLLM. Generates five examples per prompt.
-
-    :param args: arguments including modelname
-    :param prompts: list of prompts in the chat format
-    :return: list of generated texts (five per prompt)
-    """
-    llm = LLM(
-        model=args.model_name,
-        max_model_len=2048,
-    )
-    sampling_params = SamplingParams(
-        temperature=0.7,
-        top_p=0.9,
-        skip_special_tokens=True,
-        top_k=50,
-        n=5,
-    )
-    results = generate_vllm(
-        messages=prompts,
-        llm=llm,
-        sampling_params=sampling_params,
-    )
-    texts = [output.text for res in results for output in res.outputs]
-    return texts
 
 
 def print_metrics(df: pd.DataFrame):
