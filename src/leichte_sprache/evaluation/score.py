@@ -17,6 +17,11 @@ from transformers import (
     AutoModelForSequenceClassification,
 )
 
+from leichte_sprache.utils.utils import get_logger
+
+
+logger = get_logger()
+
 
 def calculate_readability_scores(text: str) -> dict:
     """Calculate readability scores on a German text.
@@ -257,7 +262,8 @@ def classifier_inference(model: PreTrainedModel, encoded_input, labels) -> tuple
         output = model(**encoded_input, labels=labels)
         predicted_class_id = output.logits.argmax().item()
         logits = output.logits
-    except RuntimeError:
+    except (RuntimeError, IndexError) as e:
+        logger.debug(f"Encountered error {e}. Setting prediciton and logits to None.")
         predicted_class_id, logits = None, None
     return predicted_class_id, logits
 
