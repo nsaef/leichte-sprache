@@ -5,12 +5,9 @@ import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-from leichte_sprache.constants import (
-    LS_USER_PROMPT_TEXT,
-    LS_SYSTEM_PROMPT_DICT,
-)
 from leichte_sprache.evaluation.score import calculate_metrics
 from leichte_sprache.inference.inference import run_inference_vllm
+from leichte_sprache.utils.model_utils import create_prompts_sg_to_ls
 from leichte_sprache.utils.utils import get_logger
 
 
@@ -39,29 +36,6 @@ def parse_args() -> ArgumentParser:
     )
     args = parser.parse_args()
     return args
-
-
-def create_prompts(texts: list[str]) -> list[dict]:
-    """Create prompts in the chat format from a list of texts.
-    In order to evaluate a model finetuned to generate Leichte Sprache,
-    use text in standard German as input. The system and user prompt
-    used to train the model are used for the generation prompt.
-
-    :param text: list of texts that should be transformed to Leichte Sprache
-    :return: list of prompts in the chat format: [{"role": "user", "content": prompt+text}]
-    """
-    messages = []
-
-    for text in texts:
-        message = [
-            LS_SYSTEM_PROMPT_DICT,
-            {
-                "role": "user",
-                "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text),
-            },
-        ]
-        messages.append(message)
-    return messages
 
 
 def print_metrics(df: pd.DataFrame):
@@ -105,8 +79,8 @@ def generate_and_evaluate(args):
     :param args: CLI arguments
     """
     df = pd.read_csv("src/leichte_sprache/dataset/files/test_data_sg.csv")
-    prompts = create_prompts(list(df.text))
-    texts = run_inference_vllm(args, prompts)
+    prompts = create_prompts_sg_to_ls(list(df.text))
+    texts = run_inference_vllm(args.model_name, prompts)
     torch.cuda.empty_cache()
 
     tokenizer = AutoTokenizer.from_pretrained(args.classification_model)

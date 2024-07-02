@@ -8,6 +8,7 @@ import torch
 from transformers import PreTrainedTokenizer
 from vllm import LLM, SamplingParams, RequestOutput
 
+from leichte_sprache.constants import LS_SYSTEM_PROMPT_DICT, LS_USER_PROMPT_TEXT
 from leichte_sprache.utils.db_utils import ingest_pandas
 from leichte_sprache.utils.utils import get_logger
 
@@ -173,3 +174,26 @@ def chunk_text(
     if partial:
         chunks.append(partial)
     return chunks
+
+
+def create_prompts_sg_to_ls(texts: list[str]) -> list[dict]:
+    """Create prompts in the chat format from a list of texts.
+    In order to evaluate a model finetuned to generate Leichte Sprache,
+    use text in standard German as input. The system and user prompt
+    used to train the model are used for the generation prompt.
+
+    :param text: list of texts that should be transformed to Leichte Sprache
+    :return: list of prompts in the chat format: [{"role": "user", "content": prompt+text}]
+    """
+    messages = []
+
+    for text in texts:
+        message = [
+            LS_SYSTEM_PROMPT_DICT,
+            {
+                "role": "user",
+                "content": LS_USER_PROMPT_TEXT.replace("{text_user}", text),
+            },
+        ]
+        messages.append(message)
+    return messages

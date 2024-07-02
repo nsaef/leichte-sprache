@@ -362,9 +362,9 @@ def upload_to_pinecone():
         full_text = row.get(TEXT_COLUMN)
         chunks = chunk_text(tokenizer, full_text, tokenizer.model_max_length)
 
-        for chunk in chunks:
+        for j, chunk in enumerate(chunks):
             item = {
-                "id": row.get(ID_COLUMN),
+                "id": f"{row.get(ID_COLUMN)}_{j}",
                 "text": chunk,
                 "metadata": {
                     SRC_COLUMN: row.get(SRC_COLUMN),
@@ -378,6 +378,7 @@ def upload_to_pinecone():
     embeddings = create_embeddings(input_texts=texts, modelname=modelname)
     for i, item in enumerate(vector_data):
         item["values"] = embeddings[i]
+        item["metadata"]["text"] = item["text"]
         del item["text"]
 
     index = get_pinecone_index()
@@ -393,4 +394,5 @@ def upload_to_pinecone():
 
 
 if __name__ == "__main__":
-    create_classification_dataset()
+    upload_to_pinecone()
+    # create_classification_dataset()

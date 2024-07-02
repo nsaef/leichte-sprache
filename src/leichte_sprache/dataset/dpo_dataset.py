@@ -29,9 +29,13 @@ from leichte_sprache.constants import (
     REJECTED,
 )
 from leichte_sprache.dataset.data_management import push_to_hf_hub
-from leichte_sprache.evaluation.run_model import create_prompts, calculate_metrics
+from leichte_sprache.evaluation.run_model import calculate_metrics
 from leichte_sprache.utils.db_utils import ingest_pandas, get_connector
-from leichte_sprache.utils.model_utils import generate_vllm, run_vllm_batch_generation
+from leichte_sprache.utils.model_utils import (
+    create_prompts_sg_to_ls,
+    generate_vllm,
+    run_vllm_batch_generation,
+)
 from leichte_sprache.utils.utils import get_logger
 
 
@@ -353,7 +357,7 @@ def generate_raw_dpo_dataset(model_name: str, target_size: int, model_max_length
     dataset = build_standard_german_dataset(
         model_name, target_size=target_size, model_max_length=model_max_length
     )
-    prompts = create_prompts(dataset[CONTENT_COLUMN])
+    prompts = create_prompts_sg_to_ls(dataset[CONTENT_COLUMN])
     dataset = dataset.add_column(name=PROMPTS_COLUMN, column=prompts)
 
     # note: this refactored function would be preferable, but isn't ready yet

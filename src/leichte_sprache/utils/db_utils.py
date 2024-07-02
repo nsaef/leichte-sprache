@@ -200,7 +200,7 @@ def drop_table(table_name: str):
     return
 
 
-def get_pinecone_index(index_name: str = "leichte-sprache"):
+def get_pinecone_index(index_name: str = "leichte-sprache-01"):
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     index = pc.Index(index_name)
     return index
