@@ -3,7 +3,9 @@ from typing import Callable
 from datasets import Dataset
 import pandas as pd
 from tqdm import tqdm
+from sentence_transformers import SentenceTransformer
 import torch
+from transformers import PreTrainedTokenizer
 from vllm import LLM, SamplingParams, RequestOutput
 
 from leichte_sprache.utils.db_utils import ingest_pandas
@@ -129,3 +131,45 @@ def generate_vllm(
         use_tqdm=use_tqdm,
     )
     return outputs
+
+
+def create_embeddings(
+    input_texts: list[str], modelname: str = "intfloat/multilingual-e5-large"
+):
+    model = SentenceTransformer(modelname)
+    input_texts_processed = [f"query: {t}" for t in input_texts]
+    embeddings = model.encode(
+        input_texts_processed, normalize_embeddings=True, show_progress_bar=True
+    )
+    return embeddings
+
+
+def chunk_text(
+    tokenizer: PreTrainedTokenizer, text: str, max_length: int, separator: str = "\n"
+) -> list[str]:
+    """Chunk text into smaller batches that can be fit into the classifier.
+    Doesn't support the case where a single paragraph is longer than the given limit.
+
+    :param tokenizer: tokenizer, to calculate the text length in tokens
+    :param text: text to be classified
+    :param max_length: maximum input length of the model
+    :param separator: string at which to split the text into chunks, defaults to "\n"
+    :return: list of text chunks that can be fit into the model
+    """
+    chunks = []
+    parts = text.split(separator)
+    # todo: concat the tensors instead of the strings
+    partial = ""
+    len_current_chunk = 0
+    for part in parts:
+        encoded = tokenizer(part, return_tensors="pt")["input_ids"][0]
+        if len(encoded) + len_current_chunk < max_length:
+            partial += part
+            len_current_chunk += len(encoded)
+        else:
+            chunks.append(partial)
+            partial = part
+            len_current_chunk = len(encoded)
+    if partial:
+        chunks.append(partial)
+    return chunks

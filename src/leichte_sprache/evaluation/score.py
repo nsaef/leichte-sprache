@@ -17,6 +17,7 @@ from transformers import (
     AutoModelForSequenceClassification,
 )
 
+from leichte_sprache.utils.model_utils import chunk_text
 from leichte_sprache.utils.utils import get_logger
 
 
@@ -216,37 +217,6 @@ def run_rule_based_checks():
     # prefer numbers (1) over number-words (one)
     # avoid special characters like " % ... ; & () $
     pass
-
-
-def chunk_text(
-    tokenizer: PreTrainedTokenizer, text: str, max_length: int, separator: str = "\n"
-) -> list[str]:
-    """Chunk text into smaller batches that can be fit into the classifier.
-    Doesn't support the case where a single paragraph is longer than the given limit.
-
-    :param tokenizer: tokenizer, to calculate the text length in tokens
-    :param text: text to be classified
-    :param max_length: maximum input length of the model
-    :param separator: string at which to split the text into chunks, defaults to "\n"
-    :return: list of text chunks that can be fit into the model
-    """
-    chunks = []
-    parts = text.split(separator)
-    # todo: concat the tensors instead of the strings
-    partial = ""
-    len_current_chunk = 0
-    for part in parts:
-        encoded = tokenizer(part, return_tensors="pt")["input_ids"][0]
-        if len(encoded) + len_current_chunk < max_length:
-            partial += part
-            len_current_chunk += len(encoded)
-        else:
-            chunks.append(partial)
-            partial = part
-            len_current_chunk = len(encoded)
-    if partial:
-        chunks.append(partial)
-    return chunks
 
 
 def classifier_inference(model: PreTrainedModel, encoded_input, labels) -> tuple:

@@ -1,6 +1,8 @@
 from datetime import datetime
+from itertools import islice
 import locale
 import logging
+from typing import Generator
 
 
 def get_logger() -> logging.Logger:
@@ -33,3 +35,12 @@ def parse_german_date(date_string: str, format_string: str) -> datetime:
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
     date = datetime.strptime(date_string, format_string)
     return date
+
+
+def create_batches(iterable, batch_size: int = 100) -> Generator:
+    """A helper function to break an iterable into batches of size batch_size."""
+    it = iter(iterable)
+    batch = tuple(islice(it, batch_size))
+    while batch:
+        yield batch
+        batch = tuple(islice(it, batch_size))

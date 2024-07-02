@@ -11,6 +11,8 @@ from datasets import (
 )
 from lingua import Language
 import pandas as pd
+from transformers import AutoTokenizer
+from tqdm import tqdm
 
 from leichte_sprache.constants import (
     CRAWLER_TABLE,
@@ -40,8 +42,11 @@ from leichte_sprache.utils.db_utils import (
     create_table,
     get_connector,
     ingest_pandas,
+    get_pinecone_index,
+    query_db,
 )
-from leichte_sprache.utils.utils import get_logger
+from leichte_sprache.utils.model_utils import create_embeddings, chunk_text
+from leichte_sprache.utils.utils import get_logger, create_batches
 
 
 logger = get_logger()
@@ -338,6 +343,52 @@ def create_classification_dataset():
     dataset = concatenate_datasets([ls, news, wiki, web]).cast(features)
 
     push_to_hf_hub(dataset, os.getenv("HF_CLASSIFICATION_DATASET_NAME"))
+    return
+
+
+def upload_to_pinecone():
+    """Retrieve all data from the crawler table, create chunks that fit
+    into the embdding model, and create embddings for the text. Then convert
+    the data into the correct format and upload it to Pinecone.
+    """
+    logger.info("Inserting embeddings for crawled texts into Pinecone")
+    data = query_db(f"SELECT * FROM {CRAWLER_TABLE}")
+    vector_data = []
+
+    modelname = "intfloat/multilingual-e5-large"
+    tokenizer = AutoTokenizer.from_pretrained(modelname)
+
+    for row in tqdm(data, desc="Data preparation"):
+        full_text = row.get(TEXT_COLUMN)
+        chunks = chunk_text(tokenizer, full_text, tokenizer.model_max_length)
+
+        for chunk in chunks:
+            item = {
+                "id": row.get(ID_COLUMN),
+                "text": chunk,
+                "metadata": {
+                    SRC_COLUMN: row.get(SRC_COLUMN),
+                    URL_COLUMN: row.get(URL_COLUMN),
+                    CRAWL_TS_COLUMN: row.get(CRAWL_TS_COLUMN),
+                },
+            }
+            vector_data.append(item)
+
+    texts = [item.get("text") for item in vector_data]
+    embeddings = create_embeddings(input_texts=texts, modelname=modelname)
+    for i, item in enumerate(vector_data):
+        item["values"] = embeddings[i]
+        del item["text"]
+
+    index = get_pinecone_index()
+    batch_size = 100
+    for batch in tqdm(
+        create_batches(vector_data, batch_size=batch_size),
+        desc="Upserting data",
+        total=len(vector_data) / batch_size,
+    ):
+        index.upsert(batch)
+    logger.info(f"Inserted {len(vector_data)} rows into pinecone")
     return
 
 

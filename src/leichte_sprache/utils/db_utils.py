@@ -1,6 +1,8 @@
+import os
 import sqlite3
 
 import pandas as pd
+from pinecone.grpc import PineconeGRPC as Pinecone
 
 from leichte_sprache.utils.utils import get_logger
 
@@ -196,3 +198,9 @@ def drop_table(table_name: str):
     conn.commit()
     conn.close()
     return
+
+
+def get_pinecone_index(index_name: str = "leichte-sprache"):
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    index = pc.Index(index_name)
+    return index
